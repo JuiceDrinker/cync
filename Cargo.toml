@@ -1,0 +1,15 @@
+[package]
+name = "cync"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+aws-sdk-s3 = "1.4.0"
+aws-config = { version = "1.1.7", features = ["behavior-version-latest"]}
+md5 = "0.7.0"
+thiserror = "1.0.61"
+tokio = { version = "1.37.0", features = ["full"] }
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"
