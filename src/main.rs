@@ -21,7 +21,8 @@ mod error;
 async fn main() -> Result<(), Error> {
     tracing_subscriber::fmt::init();
 
-    Cync::new(&aws_config::load_from_env().await)?
+    Cync::new(&aws_config::load_from_env().await)
+        .await?
         .run_sync()
         .await
 }
@@ -38,23 +39,18 @@ struct Cync {
 }
 
 impl Cync {
-    fn new(aws_config: &aws_config::SdkConfig) -> Result<Self, Error> {
+    async fn new(aws_config: &aws_config::SdkConfig) -> Result<Self, Error> {
+        let config = Arc::new(Config::load_from_env(aws_config)?);
         Ok(Self {
-            config: Config::load_from_env(aws_config)?.into(),
-            remote: HashMap::new(),
-            local: HashMap::new(),
+            config: Arc::clone(&config),
+            remote: Cync::fetch_remote(&config).await?,
+            local: Cync::load_local(&config).await?,
         })
     }
 
-    async fn run_sync(mut self) -> Result<(), Error> {
-        let (remote_objects, local_files) = tokio::join!(self.fetch_remote(), self.load_local());
-
-        self.remote = remote_objects?;
-        self.local = local_files?;
-
+    async fn run_sync(self) -> Result<(), Error> {
         self.sync_local_with_remote().await?;
         self.sync_remote_with_local().await?;
-
         Ok(())
     }
 
@@ -81,8 +77,8 @@ impl Cync {
         }
     }
 
-    async fn load_local(&self) -> Result<HashMap<FilePath, FileMetaData>, Error> {
-        match fs::read_dir(&self.config.local_path) {
+    async fn load_local(config: &Config) -> Result<HashMap<FilePath, FileMetaData>, Error> {
+        match fs::read_dir(config.local_path.clone()) {
             Ok(entries) => {
                 Ok(tokio_stream::iter(entries)
                     .fold(HashMap::new(), |mut acc, entry| {
@@ -102,7 +98,7 @@ impl Cync {
             }
             Err(e) => {
                 if e.kind() == io::ErrorKind::NotFound {
-                    self.create_default_directory().await?;
+                    Cync::create_default_directory(config).await?;
                     Ok(HashMap::new())
                 } else {
                     Err(Error::FailedToLoadLocalFiles)
@@ -111,21 +107,21 @@ impl Cync {
         }
     }
 
-    async fn create_default_directory(&self) -> Result<(), Error> {
+    async fn create_default_directory(config: &Config) -> Result<(), Error> {
         info!("Creating default directory");
-        if create_dir(&self.config.local_path).await.is_ok() {
+        if create_dir(config.local_path.clone()).await.is_ok() {
             Ok(())
         } else {
             Err(Error::FailedToCreateDefaultDirectory)
         }
     }
-    async fn fetch_remote(&self) -> Result<HashMap<FilePath, FileMetaData>, Error> {
+
+    async fn fetch_remote(config: &Config) -> Result<HashMap<FilePath, FileMetaData>, Error> {
         let mut remote = HashMap::new();
-        let mut paginated_response = self
-            .config
+        let mut paginated_response = config
             .aws_client
             .list_objects_v2()
-            .bucket(self.config.aws_bucket.clone())
+            .bucket(config.aws_bucket.clone())
             .max_keys(10)
             .into_paginator()
             .send();
@@ -133,11 +129,10 @@ impl Cync {
         while let Some(result) = paginated_response.next().await {
             if let Ok(output) = result {
                 for object in output.contents() {
-                    if let Ok(remote_object) = self
-                        .config
+                    if let Ok(remote_object) = config
                         .aws_client
                         .get_object()
-                        .bucket(self.config.aws_bucket.clone())
+                        .bucket(config.aws_bucket.clone())
                         .key(object.key().unwrap())
                         .send()
                         .await
@@ -153,7 +148,7 @@ impl Cync {
                     };
                 }
             } else {
-                return Err(Error::FailedToFetchRemote); 
+                return Err(Error::FailedToFetchRemote);
             };
         }
 
