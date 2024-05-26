@@ -14,4 +14,18 @@ pub enum Error {
 
     #[error("Sync with remote failed")]
     SyncFailed(String),
+
+    #[error("Failed to retrieve object from host")]
+    FailedToFetchRemote,
+    #[error("Failed to upload loacal files to remote host")]
+    FailedToLoadLocalFiles,
+
+    #[error("Failed to sync remote with local")]
+    LocalSyncFailed,
+
+    #[error("Failed to sync local with remote")]
+    RemoteSyncFailed,
+
+    #[error("Failed to create default Cync directory")]
+    FailedToCreateDefaultDirectory,
 }
