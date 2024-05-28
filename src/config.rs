@@ -22,4 +22,16 @@ impl Config {
             aws_client: aws_sdk_s3::Client::new(aws_config),
         })
     }
+
+    pub fn local_path(&self) -> &str {
+        &self.local_path
+    }
+
+    pub fn bucket_name(&self) -> &str {
+        &self.aws_bucket
+    }
+
+    pub fn aws_client(&self) -> &Client {
+        &self.aws_client
+    }
 }

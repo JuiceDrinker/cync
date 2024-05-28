@@ -1,21 +1,15 @@
 use crate::error::Error;
-use aws_sdk_s3::{
-    operation::get_object::GetObjectError,
-    primitives::{ByteStream, ByteStreamError},
-};
+use aws_sdk_s3::primitives::ByteStream;
 use config::Config;
-use std::{
-    collections::HashMap,
-    fs::{self, DirEntry, File},
-    io::{self, Read},
-    sync::Arc,
-};
+use std::sync::Arc;
+use std::{collections::HashMap, fs, path::Path};
 use tokio::fs::create_dir;
-use tokio_stream::StreamExt;
 use tracing::info;
+use util::walk_directory;
 
 mod config;
 mod error;
+mod util;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -24,7 +18,11 @@ async fn main() -> Result<(), Error> {
     Cync::new(&aws_config::load_from_env().await)
         .await?
         .run_sync()
-        .await
+        .await?;
+
+    info!("Successfully synced");
+
+    Ok(())
 }
 
 type FilePath = String;
@@ -54,62 +52,21 @@ impl Cync {
         Ok(())
     }
 
-    async fn sync_remote_with_local(&self) -> Result<(), Error> {
-        let (_, error): (Vec<_>, Vec<_>) = futures::future::join_all(
-            self.remote
-                .iter()
-                .filter_map(|(path, (_, content))| {
-                    if !self.local.contains_key(path) {
-                        return Some((path, content));
-                    }
-                    None
-                })
-                .map(|(path, content)| tokio::fs::write(path, content)),
-        )
-        .await
-        .into_iter()
-        .partition(|item| item.is_ok());
-
-        if error.is_empty() {
-            Ok(())
-        } else {
-            Err(Error::LocalSyncFailed)
-        }
-    }
-
     async fn load_local(config: &Config) -> Result<HashMap<FilePath, FileMetaData>, Error> {
-        match fs::read_dir(config.local_path.clone()) {
-            Ok(entries) => {
-                Ok(tokio_stream::iter(entries)
-                    .fold(HashMap::new(), |mut acc, entry| {
-                        if let Ok(file_entry) = entry {
-                            let mut file = File::open(file_entry.path()).unwrap();
-                            let mut buf = Vec::new();
-                            //TODO: read file in chunks
-                            let _ = file.read_to_end(&mut buf).map_err(|_| {
-                                Error::LocalFileCorrupted(get_path_from_entry(&file_entry))
-                            });
-                            let file_hash = md5::compute(buf.clone());
-                            acc.insert(get_path_from_entry(&file_entry), (file_hash, buf));
-                        };
-                        acc
-                    })
-                    .await)
-            }
-            Err(e) => {
-                if e.kind() == io::ErrorKind::NotFound {
-                    Cync::create_default_directory(config).await?;
-                    Ok(HashMap::new())
-                } else {
-                    Err(Error::FailedToLoadLocalFiles)
-                }
-            }
+        if fs::metadata(config.local_path())?.is_dir() {
+            let local_files = walk_directory(Path::new(config.local_path()))?;
+            info!("Found {} local files", local_files.keys().count());
+            Ok(local_files)
+        } else {
+            info!("Could not find local directory");
+            Cync::create_default_directory(config).await?;
+            Ok(HashMap::new())
         }
     }
 
     async fn create_default_directory(config: &Config) -> Result<(), Error> {
         info!("Creating default directory");
-        if create_dir(config.local_path.clone()).await.is_ok() {
+        if create_dir(config.local_path()).await.is_ok() {
             Ok(())
         } else {
             Err(Error::FailedToCreateDefaultDirectory)
@@ -119,9 +76,9 @@ impl Cync {
     async fn fetch_remote(config: &Config) -> Result<HashMap<FilePath, FileMetaData>, Error> {
         let mut remote = HashMap::new();
         let mut paginated_response = config
-            .aws_client
+            .aws_client()
             .list_objects_v2()
-            .bucket(config.aws_bucket.clone())
+            .bucket(config.bucket_name())
             .max_keys(10)
             .into_paginator()
             .send();
@@ -130,16 +87,23 @@ impl Cync {
             if let Ok(output) = result {
                 for object in output.contents() {
                     if let Ok(remote_object) = config
-                        .aws_client
+                        .aws_client()
                         .get_object()
-                        .bucket(config.aws_bucket.clone())
-                        .key(object.key().unwrap())
+                        .bucket(config.bucket_name())
+                        .key(object.key().expect("Uploaded objects must have a key"))
                         .send()
                         .await
                     {
-                        let aggregated_bytes = remote_object.body.collect().await.unwrap();
+                        let aggregated_bytes = remote_object
+                            .body
+                            .collect()
+                            .await
+                            .expect("Contents are valid utf-8");
                         remote.insert(
-                            object.key().unwrap().to_string(),
+                            object
+                                .key()
+                                .expect("Uploaded objects must have a key")
+                                .to_string(),
                             (
                                 md5::compute(&aggregated_bytes.clone().into_bytes()),
                                 aggregated_bytes.clone().to_vec(),
@@ -152,11 +116,36 @@ impl Cync {
             };
         }
 
+        info!("Fetched {} object from remote host", remote.keys().count());
         Ok(remote)
     }
 
     async fn sync_local_with_remote(&self) -> Result<(), Error> {
-        let (_, error): (Vec<_>, Vec<_>) = futures::future::join_all(
+        let (successful, error): (Vec<_>, Vec<_>) = futures::future::join_all(
+            self.remote
+                .iter()
+                .filter_map(|(path, (_, content))| {
+                    if !self.local.contains_key(path) {
+                        return Some((path, content));
+                    }
+                    None
+                })
+                .map(|(path, content)| tokio::fs::write(path, content)),
+        )
+        .await
+        .into_iter()
+        .partition(Result::is_ok);
+
+        if error.is_empty() {
+            info!("Overwrote {} local files", successful.len());
+            Ok(())
+        } else {
+            Err(Error::LocalSyncFailed)
+        }
+    }
+
+    async fn sync_remote_with_local(&self) -> Result<(), Error> {
+        let (successful, error): (Vec<_>, Vec<_>) = futures::future::join_all(
             self.local
                 .iter()
                 .filter_map(|(path, (hash, content))| {
@@ -171,7 +160,7 @@ impl Cync {
                     self.config
                         .aws_client
                         .put_object()
-                        .bucket(self.config.aws_bucket.clone())
+                        .bucket(self.config.bucket_name())
                         .key(path)
                         .body(ByteStream::from(content.clone()))
                         .send()
@@ -179,27 +168,13 @@ impl Cync {
         )
         .await
         .into_iter()
-        .partition(|item| item.is_ok());
+        .partition(Result::is_ok);
 
         if error.is_empty() {
+            info!("Overwrote {} remote files", successful.len());
             Ok(())
         } else {
             Err(Error::RemoteSyncFailed)
         }
-    }
-}
-
-fn get_path_from_entry(entry: &DirEntry) -> String {
-    entry.path().as_path().to_str().unwrap().to_string()
-}
-
-impl From<GetObjectError> for Error {
-    fn from(_value: GetObjectError) -> Self {
-        Error::FailedToFetchRemote
-    }
-}
-impl From<ByteStreamError> for Error {
-    fn from(_value: ByteStreamError) -> Self {
-        Error::FailedToFetchRemote
     }
 }
