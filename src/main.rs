@@ -1,6 +1,15 @@
 use crate::error::Error;
 use aws_sdk_s3::primitives::ByteStream;
 use config::Config;
+use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
+use crossterm::execute;
+use crossterm::terminal::{
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+};
+use error::TuiErrorKind;
+use ratatui::prelude::CrosstermBackend;
+use ratatui::Terminal;
+use std::io::{stderr, Stdout, Stderr};
 use std::sync::Arc;
 use std::{collections::HashMap, fs, path::Path};
 use tokio::fs::create_dir;
@@ -11,30 +20,76 @@ mod config;
 mod error;
 mod util;
 
+async fn run_app(
+    terminal: Terminal<CrosstermBackend<Stderr>>,
+    app: &mut Cync,
+) -> Result<bool, Error> {
+    todo!()
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     tracing_subscriber::fmt::init();
 
-    Cync::new(&aws_config::load_from_env().await)
-        .await?
-        .run_sync()
-        .await?;
+    enable_raw_mode().map_err(|_| Error::Tui(error::TuiErrorKind::Initilization));
+    let mut stderr = std::io::stderr();
+    execute!(stderr, EnterAlternateScreen, EnableMouseCapture)
+        .map_err(|_| Error::Tui(error::TuiErrorKind::Initilization));
+    let backend = CrosstermBackend::new(stderr);
+    let mut terminal =
+        Terminal::new(backend).map_err(|_| Error::Tui(TuiErrorKind::Initilization))?;
+    let aws_config = &aws_config::load_from_env().await;
 
-    info!("Successfully synced");
+    let mut app = Cync::new(aws_config).await?;
+    let res = run_app(terminal, &mut app);
 
+    disable_raw_mode().map_err(|_| Error::Tui(TuiErrorKind::TerminalRestoration));
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )
+    .map_err(|_| Error::Tui(TuiErrorKind::TerminalRestoration))?;
+
+    terminal
+        .show_cursor()
+        .map_err(|_| Error::Tui(TuiErrorKind::TerminalRestoration))?;
+
+    if let Ok(do_print) = res {
+        if do_print {
+            app.view_files();
+        }
+    } else if let Err(err) = res {
+        println!("{err:?}");
+    }
     Ok(())
 }
 
+pub struct App {
+    config: Arc<Config>,
+    remote: HashMap<FilePath, FileMetaData>,
+    local: HashMap<FilePath, FileMetaData>,
+}
 type FilePath = String;
 type FileHash = md5::Digest;
 type FileContents = Vec<u8>;
 type FileMetaData = (FileHash, FileContents);
+enum Source {
+    Remote,
+    Local,
+}
 
 struct Cync {
     config: Arc<Config>,
     remote: HashMap<FilePath, FileMetaData>,
     local: HashMap<FilePath, FileMetaData>,
 }
+
+struct FileDetails {
+    remote_hash: Option<md5::Digest>,
+    local_hash: Option<md5::Digest>,
+}
+type FileViewer = HashMap<FilePath, FileDetails>;
 
 impl Cync {
     async fn new(aws_config: &aws_config::SdkConfig) -> Result<Self, Error> {
@@ -46,6 +101,49 @@ impl Cync {
         })
     }
 
+    fn view_files(&self) -> FileViewer {
+        self.remote
+            .iter()
+            .map(|(path, (hash, _))| (path, (Source::Remote, hash)))
+            .chain(
+                self.local
+                    .iter()
+                    .map(|(path, (hash, _))| (path, (Source::Local, hash))),
+            )
+            .fold(
+                HashMap::<FilePath, FileDetails>::new(),
+                |mut acc, (path, (source, hash))| {
+                    match acc.get_mut(path) {
+                        Some(existing) => match source {
+                            Source::Remote => existing.remote_hash = Some(*hash),
+                            Source::Local => existing.local_hash = Some(*hash),
+                        },
+                        None => match source {
+                            Source::Remote => {
+                                acc.insert(
+                                    path.to_owned(),
+                                    FileDetails {
+                                        remote_hash: Some(*hash),
+                                        local_hash: None,
+                                    },
+                                );
+                            }
+                            Source::Local => {
+                                acc.insert(
+                                    path.to_owned(),
+                                    FileDetails {
+                                        remote_hash: Some(*hash),
+                                        local_hash: None,
+                                    },
+                                );
+                            }
+                        },
+                    };
+                    acc
+                },
+            )
+    }
+
     async fn run_sync(self) -> Result<(), Error> {
         self.sync_local_with_remote().await?;
         self.sync_remote_with_local().await?;
@@ -53,7 +151,10 @@ impl Cync {
     }
 
     async fn load_local(config: &Config) -> Result<HashMap<FilePath, FileMetaData>, Error> {
-        if fs::metadata(config.local_path())?.is_dir() {
+        if fs::metadata(config.local_path())
+            .map_err(|_| Error::LoadingLocalFiles(error::LoadingLocalFiles::FileSystem))?
+            .is_dir()
+        {
             let local_files = walk_directory(Path::new(config.local_path()))?;
             info!("Found {} local files", local_files.keys().count());
             Ok(local_files)

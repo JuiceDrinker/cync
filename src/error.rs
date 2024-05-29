@@ -5,6 +5,9 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("Missing env variable: {0}")]
+    Tui(TuiErrorKind),
+
+    #[error("Missing env variable: {0}")]
     MissingEnvVar(String),
 
     #[error("Env variable corrupt")]
@@ -30,6 +33,15 @@ pub enum Error {
 }
 
 #[derive(Error, Debug)]
+pub enum TuiErrorKind {
+    #[error("Failed to initialize terminal")]
+    Initilization,
+
+    #[error("Error exiting application...")]
+    TerminalRestoration,
+}
+
+#[derive(Error, Debug)]
 pub enum LoadingLocalFiles {
     #[error("Failed to upload loacal files to remote host")]
     FileSystem,
@@ -43,11 +55,5 @@ impl From<GetObjectError> for Error {
 impl From<ByteStreamError> for Error {
     fn from(_value: ByteStreamError) -> Self {
         Error::FailedToFetchRemote
-    }
-}
-
-impl From<io::Error> for Error {
-    fn from(_value: io::Error) -> Self {
-        Error::LoadingLocalFiles(LoadingLocalFiles::FileSystem)
     }
 }
