@@ -1,5 +1,5 @@
 use aws_sdk_s3::{operation::get_object::GetObjectError, primitives::ByteStreamError};
-use std::{ffi::OsStr, io};
+use std::ffi::OsStr;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -58,11 +58,5 @@ impl From<GetObjectError> for Error {
 impl From<ByteStreamError> for Error {
     fn from(_value: ByteStreamError) -> Self {
         Error::FailedToFetchRemote
-    }
-}
-
-impl From<io::Error> for Error {
-    fn from(_value: io::Error) -> Self {
-        Error::LoadingLocalFiles(LoadingLocalFiles::FileSystem)
     }
 }

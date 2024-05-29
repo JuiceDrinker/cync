@@ -1,9 +1,12 @@
 use aws_sdk_s3::primitives::ByteStream;
 use config::Config;
+use ratatui::widgets::TableState;
+use std::cmp;
 use std::sync::Arc;
 use std::{collections::HashMap, fs, path::Path};
 use tokio::fs::create_dir;
 use tracing::info;
+use unicode_width::UnicodeWidthStr;
 use util::walk_directory;
 
 use crate::error::{self, Error};
@@ -21,13 +24,24 @@ pub struct App {
     pub config: Arc<Config>,
     pub remote: HashMap<FilePath, FileMetaData>,
     pub local: HashMap<FilePath, FileMetaData>,
+    pub table_state: TableState,
 }
 
 pub struct FileDetails {
     pub remote_hash: Option<md5::Digest>,
     pub local_hash: Option<md5::Digest>,
 }
-type FileViewer = HashMap<FilePath, FileDetails>;
+
+impl FileDetails {
+    pub fn local_hash(&self) -> Option<md5::Digest> {
+        self.local_hash
+    }
+
+    pub fn remote_hash(&self) -> Option<md5::Digest> {
+        self.remote_hash
+    }
+}
+pub struct FileViewer(pub HashMap<FilePath, FileDetails>);
 
 impl App {
     pub async fn new(aws_config: &aws_config::SdkConfig) -> Result<Self, Error> {
@@ -36,11 +50,45 @@ impl App {
             config: Arc::clone(&config),
             remote: App::fetch_remote(&config).await?,
             local: App::load_local(&config).await?,
+            table_state: TableState::default(),
         })
     }
 
+    pub fn constraint_len_calculator(&self) -> (u16, u16, u16) {
+        let (key_len, local_len, remote_len) = &self.view_files().0.iter().fold(
+            (0, 0, 0),
+            |(mut path_len, mut remote_len, mut local_len),
+             (
+                path,
+                FileDetails {
+                    remote_hash,
+                    local_hash,
+                },
+            )| {
+                path_len = cmp::max(path_len, UnicodeWidthStr::width(path.as_str()));
+                if let Some(r) = remote_hash {
+                    remote_len = cmp::max(
+                        remote_len,
+                        UnicodeWidthStr::width(format!("{:?}", r).as_str()),
+                    );
+                }
+                if let Some(l) = local_hash {
+                    local_len = cmp::max(
+                        remote_len,
+                        UnicodeWidthStr::width(format!("{:?}", l).as_str()),
+                    );
+                }
+
+                (path_len, remote_len, local_len)
+            },
+        );
+
+        #[allow(clippy::cast_possible_truncation)]
+        (*key_len as u16, *local_len as u16, *remote_len as u16)
+    }
     pub fn view_files(&self) -> FileViewer {
-        self.remote
+        let files = self
+            .remote
             .iter()
             .map(|(path, (hash, _))| (path, (Source::Remote, hash)))
             .chain(
@@ -79,7 +127,8 @@ impl App {
                     };
                     acc
                 },
-            )
+            );
+        FileViewer(files)
     }
 
     async fn run_sync(self) -> Result<(), Error> {

@@ -12,8 +12,10 @@ use crate::{
 
 pub fn walk_directory(path: &Path) -> Result<HashMap<FilePath, FileMetaData>, Error> {
     let mut result = HashMap::new();
-    for entry in fs::read_dir(path)? {
-        let entry = entry?;
+    for entry in
+        fs::read_dir(path).map_err(|_| Error::LoadingLocalFiles(LoadingLocalFiles::FileSystem))?
+    {
+        let entry = entry.map_err(|_| Error::LoadingLocalFiles(LoadingLocalFiles::FileSystem))?;
         if entry.path().is_dir() {
             if let Ok(next_level) = walk_directory(&entry.path()) {
                 result.extend(next_level);
