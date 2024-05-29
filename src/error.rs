@@ -39,6 +39,9 @@ pub enum TuiErrorKind {
 
     #[error("Error exiting application...")]
     TerminalRestoration,
+
+    #[error("Error drawing to terminal")]
+    Drawing,
 }
 
 #[derive(Error, Debug)]
@@ -55,5 +58,11 @@ impl From<GetObjectError> for Error {
 impl From<ByteStreamError> for Error {
     fn from(_value: ByteStreamError) -> Self {
         Error::FailedToFetchRemote
+    }
+}
+
+impl From<io::Error> for Error {
+    fn from(_value: io::Error) -> Self {
+        Error::LoadingLocalFiles(LoadingLocalFiles::FileSystem)
     }
 }

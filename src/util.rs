@@ -6,8 +6,8 @@ use std::{
 };
 
 use crate::{
+    app::{FileMetaData, FilePath},
     error::{Error, LoadingLocalFiles},
-    FileMetaData, FilePath,
 };
 
 pub fn walk_directory(path: &Path) -> Result<HashMap<FilePath, FileMetaData>, Error> {
