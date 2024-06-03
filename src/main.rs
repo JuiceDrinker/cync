@@ -62,12 +62,10 @@ async fn run_app(
                     KeyCode::Char('t') => {
                         app.push_file_to_remote(app.selected_file.unwrap()).await?;
                         app.selected_file = None;
-                        app.referesh_app_state().await?;
                     }
                     KeyCode::Char('f') => {
                         app.pull_file_from_remote(app.selected_file.unwrap())?;
                         app.selected_file = None;
-                        app.referesh_app_state().await?;
                     }
                     _ => {}
                 }

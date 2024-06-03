@@ -1,5 +1,4 @@
-use crate::app::{App, FileDetails};
-
+use crate::app::{App, FileKind};
 use ratatui::prelude::{Alignment, Constraint, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::Text;
@@ -14,24 +13,24 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
         .borders(Borders::all());
     let block_inner = block.inner(area);
     frame.render_widget(block, area);
-    if let Some(idx) = app.selected_file {
-        // Not entirely sure this works
-        // Based on assumption that BTreeMaps are always ordered deterministically
-        // However, underlying data could change (?)
-        // What happens if external service manipulates folder in-between renders?
-        let (
-            _,
-            FileDetails {
-                are_hashes_identical,
-                ..
-            },
-        ) = app.view_files().0.into_iter().nth(idx).unwrap();
-        if !are_hashes_identical {
-            render_popup(frame, app, block_inner)
-        } else {
-            app.selected_file = None;
-        };
-    }
+    // if let Some(idx) = app.selected_file {
+    //     // Not entirely sure this works
+    //     // Based on assumption that BTreeMaps are always ordered deterministically
+    //     // However, underlying data could change (?)
+    //     // What happens if external service manipulates folder in-between renders?
+    //     let (
+    //         _,
+    //         FileDetails {
+    //             are_hashes_identical,
+    //             ..
+    //         },
+    //     ) = app.view_files().iter().nth(idx).unwrap();
+    //     if !are_hashes_identical {
+    //         render_popup(frame, app, block_inner)
+    //     } else {
+    //         app.selected_file = None;
+    //     };
+    // }
     render_table(frame, app, block_inner);
 }
 
@@ -54,33 +53,34 @@ fn render_table(frame: &mut Frame, app: &mut App, area: Rect) {
         .style(header_style)
         .height(1);
 
-    let files = app.view_files().0;
-    let rows = files.iter().map(|(path, details)| {
-        let mut file_row = vec![Cell::from(path.to_string())];
-
-        if let Some(local) = details.local_hash() {
-            file_row.push(
-                Cell::from(format!("{:?}", local)).fg(if details.are_hashes_identical {
-                    Color::Green
-                } else {
-                    Color::Yellow
-                }),
-            )
+    let files = app.view_files();
+    let rows = files.iter().map(|(path, kind)| match kind {
+        FileKind::OnlyInRemote { hash, .. } => Row::new(vec![
+            Cell::from(path.to_owned()),
+            String::new().into(),
+            format!("{:?}", &hash).into(),
+        ])
+        .fg(Color::Yellow),
+        FileKind::OnlyInLocal { hash, .. } => Row::new(vec![
+            Cell::from(path.to_owned()),
+            format!("{:?}", &hash).into(),
+            String::new().into(),
+        ])
+        .fg(Color::Yellow),
+        FileKind::ExistsInBoth {
+            local_hash,
+            remote_hash,
+            ..
+        } => Row::new(vec![
+            Cell::from(path.to_owned()),
+            Cell::from(format!("{:?}", &local_hash)),
+            Cell::from(format!("{:?}", &remote_hash)),
+        ])
+        .fg(if local_hash == remote_hash {
+            Color::Green
         } else {
-            file_row.push(Cell::from(String::new()))
-        }
-        if let Some(remote) = details.remote_hash() {
-            file_row.push(
-                Cell::from(format!("{:?}", remote)).fg(if details.are_hashes_identical {
-                    Color::Green
-                } else {
-                    Color::Yellow
-                }),
-            )
-        } else {
-            file_row.push(Cell::from(String::new()))
-        }
-        Row::new(file_row)
+            Color::Yellow
+        }),
     });
 
     let longest_item_lens = app.constraint_len_calculator();

@@ -2,7 +2,6 @@ use aws_sdk_s3::primitives::ByteStream;
 use config::Config;
 use ratatui::widgets::TableState;
 use std::cmp;
-use std::collections::btree_map::Keys;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::{collections::HashMap, fs, path::Path};
@@ -22,157 +21,141 @@ enum Source {
     Remote,
     Local,
 }
+pub type Files = BTreeMap<FilePath, FileKind>;
 pub struct App {
     pub config: Arc<Config>,
-    pub remote_files: HashMap<FilePath, FileMetaData>,
-    pub local_files: HashMap<FilePath, FileMetaData>,
+    pub files: FileViewer,
     pub table_state: TableState,
     pub selected_file: Option<usize>,
 }
 
-pub struct FileDetails {
-    pub remote_hash: Option<md5::Digest>,
-    pub local_hash: Option<md5::Digest>,
-    pub are_hashes_identical: bool,
+impl FileKind {
+    fn create_local(hash: md5::Digest, contents: Vec<u8>) -> Self {
+        FileKind::OnlyInLocal { hash, contents }
+    }
+    fn create_dual_entry(
+        remote_hash: md5::Digest,
+        remote_contents: Vec<u8>,
+        local_hash: md5::Digest,
+        local_contents: Vec<u8>,
+    ) -> Self {
+        FileKind::ExistsInBoth {
+            local_hash,
+            local_contents,
+            remote_hash,
+            remote_contents,
+        }
+    }
+    fn create_remote(hash: md5::Digest, contents: Vec<u8>) -> Self {
+        FileKind::OnlyInRemote { hash, contents }
+    }
+}
+pub enum FileKind {
+    OnlyInRemote {
+        hash: md5::Digest,
+        contents: Vec<u8>,
+    },
+    OnlyInLocal {
+        hash: md5::Digest,
+        contents: Vec<u8>,
+    },
+    ExistsInBoth {
+        local_hash: md5::Digest,
+        local_contents: Vec<u8>,
+        remote_hash: md5::Digest,
+        remote_contents: Vec<u8>,
+    },
 }
 
-impl FileDetails {
-    pub fn local_hash(&self) -> Option<md5::Digest> {
-        self.local_hash
-    }
-
-    pub fn remote_hash(&self) -> Option<md5::Digest> {
-        self.remote_hash
-    }
-}
-pub struct FileViewer(pub BTreeMap<FilePath, FileDetails>);
+pub struct FileViewer(pub BTreeMap<FilePath, FileKind>);
 
 impl FileViewer {
-    fn keys(&self) -> Keys<FilePath, FileDetails> {
-        self.0.keys()
-    }
-}
-
-impl App {
-    pub async fn new(aws_config: &aws_config::SdkConfig) -> Result<Self, Error> {
-        let config = Arc::new(Config::load_from_env(aws_config)?);
-        Ok(Self {
-            config: Arc::clone(&config),
-            remote_files: App::fetch_remote(&config).await?,
-            local_files: App::load_local(&config).await?,
-            table_state: TableState::default().with_selected(0),
-            selected_file: None,
-        })
-    }
-
-    pub fn constraint_len_calculator(&self) -> (u16, u16, u16) {
-        let (key_len, local_len, remote_len) = &self.view_files().0.iter().fold(
-            (0, 0, 0),
-            |(mut path_len, mut remote_len, mut local_len),
-             (
-                path,
-                FileDetails {
-                    remote_hash,
-                    local_hash,
-                    ..
-                },
-            )| {
-                path_len = cmp::max(path_len, UnicodeWidthStr::width(path.as_str()));
-                if let Some(r) = remote_hash {
-                    remote_len = cmp::max(
-                        remote_len,
-                        UnicodeWidthStr::width(format!("{:?}", r).as_str()),
-                    );
-                }
-                if let Some(l) = local_hash {
-                    local_len = cmp::max(
-                        remote_len,
-                        UnicodeWidthStr::width(format!("{:?}", l).as_str()),
-                    );
-                }
-
-                (path_len, remote_len, local_len)
-            },
-        );
-
-        #[allow(clippy::cast_possible_truncation)]
-        (*key_len as u16, *local_len as u16, *remote_len as u16)
-    }
-
-    pub fn prev_file(&mut self) {
-        let i = match self.table_state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.view_files().keys().count() - 1
-                } else {
-                    i - 1
-                }
-            }
-            None => 0,
-        };
-
-        self.table_state.select(Some(i));
-    }
-
-    pub fn next_file(&mut self) {
-        let i = match self.table_state.selected() {
-            Some(i) => {
-                if i >= self.view_files().keys().count() - 1 {
-                    0
-                } else {
-                    i + 1
-                }
-            }
-            None => 0,
-        };
-
-        self.table_state.select(Some(i));
-    }
-
-    pub fn view_files(&self) -> FileViewer {
-        let files = self
-            .remote_files
-            .iter()
-            .map(|(path, (hash, _))| (path, (Source::Remote, hash)))
+    pub async fn new(config: &Config) -> Result<Self, Error> {
+        let local_files = FileViewer::load_local(config).await?;
+        let remote_files = FileViewer::fetch_remote(config).await?;
+        let files = remote_files
+            .into_iter()
+            .map(|(path, (hash, content))| (path, (Source::Remote, hash, content)))
             .chain(
-                self.local_files
-                    .iter()
-                    .map(|(path, (hash, _))| (path, (Source::Local, hash))),
+                local_files
+                    .into_iter()
+                    .map(|(path, (hash, content))| (path, (Source::Local, hash, content))),
             )
             .fold(
-                BTreeMap::<FilePath, FileDetails>::new(),
-                |mut acc, (path, (source, hash))| {
-                    match acc.get_mut(path) {
-                        Some(existing) => match source {
-                            Source::Remote => {
-                                existing.remote_hash = Some(*hash);
-                                existing.are_hashes_identical =
-                                    existing.local_hash() == Some(*hash);
-                            }
-                            Source::Local => {
-                                existing.local_hash = Some(*hash);
-                                existing.are_hashes_identical =
-                                    existing.remote_hash() == Some(*hash);
-                            }
+                BTreeMap::<FilePath, FileKind>::new(),
+                |mut acc, (path, (source, incoming_hash, incoming_content))| {
+                    match acc.get_mut(&path) {
+                        Some(existing) => match existing {
+                            FileKind::OnlyInRemote { hash, contents } => match source {
+                                Source::Remote => {
+                                    *existing = FileKind::create_remote(
+                                        incoming_hash,
+                                        incoming_content.clone(),
+                                    )
+                                }
+                                Source::Local => {
+                                    *existing = FileKind::create_dual_entry(
+                                        *hash,
+                                        contents.to_vec(),
+                                        incoming_hash,
+                                        incoming_content,
+                                    )
+                                }
+                            },
+                            FileKind::OnlyInLocal { hash, contents } => match source {
+                                Source::Remote => {
+                                    *existing = FileKind::create_dual_entry(
+                                        incoming_hash,
+                                        incoming_content,
+                                        *hash,
+                                        contents.to_vec(),
+                                    )
+                                }
+                                Source::Local => {
+                                    *existing =
+                                        FileKind::create_local(incoming_hash, incoming_content)
+                                }
+                            },
+                            FileKind::ExistsInBoth {
+                                local_hash,
+                                local_contents,
+                                remote_hash,
+                                remote_contents,
+                            } => match source {
+                                Source::Remote => {
+                                    *existing = FileKind::create_dual_entry(
+                                        incoming_hash,
+                                        incoming_content,
+                                        *local_hash,
+                                        local_contents.to_vec(),
+                                    )
+                                }
+                                Source::Local => {
+                                    *existing = FileKind::create_dual_entry(
+                                        *remote_hash,
+                                        remote_contents.to_vec(),
+                                        incoming_hash,
+                                        incoming_content,
+                                    )
+                                }
+                            },
                         },
                         None => match source {
                             Source::Remote => {
                                 acc.insert(
                                     path.to_owned(),
-                                    FileDetails {
-                                        remote_hash: Some(*hash),
-                                        local_hash: None,
-                                        are_hashes_identical: false,
+                                    FileKind::OnlyInRemote {
+                                        hash: incoming_hash,
+                                        contents: incoming_content,
                                     },
                                 );
                             }
                             Source::Local => {
                                 acc.insert(
                                     path.to_owned(),
-                                    FileDetails {
-                                        remote_hash: Some(*hash),
-                                        local_hash: None,
-                                        are_hashes_identical: true,
+                                    FileKind::OnlyInRemote {
+                                        hash: incoming_hash,
+                                        contents: incoming_content,
                                     },
                                 );
                             }
@@ -181,31 +164,7 @@ impl App {
                     acc
                 },
             );
-        FileViewer(files)
-    }
-
-    async fn load_local(config: &Config) -> Result<HashMap<FilePath, FileMetaData>, Error> {
-        if fs::metadata(config.local_path())
-            .map_err(|_| Error::LoadingLocalFiles(error::LoadingLocalFiles::FileSystem))?
-            .is_dir()
-        {
-            let local_files = walk_directory(Path::new(config.local_path()))?;
-            info!("Found {} local files", local_files.keys().count());
-            Ok(local_files)
-        } else {
-            info!("Could not find local directory");
-            App::create_default_directory(config).await?;
-            Ok(HashMap::new())
-        }
-    }
-
-    async fn create_default_directory(config: &Config) -> Result<(), Error> {
-        info!("Creating default directory");
-        if create_dir(config.local_path()).await.is_ok() {
-            Ok(())
-        } else {
-            Err(Error::FailedToCreateDefaultDirectory)
-        }
+        Ok(FileViewer(files))
     }
 
     async fn fetch_remote(config: &Config) -> Result<HashMap<FilePath, FileMetaData>, Error> {
@@ -255,16 +214,127 @@ impl App {
         Ok(remote)
     }
 
-    pub async fn push_file_to_remote(&self, selected_file_key: usize) -> Result<(), Error> {
-        let files = self.view_files().0;
-        let (path, _) = files
+    async fn load_local(config: &Config) -> Result<HashMap<FilePath, FileMetaData>, Error> {
+        if fs::metadata(config.local_path())
+            .map_err(|_| Error::LoadingLocalFiles(error::LoadingLocalFiles::FileSystem))?
+            .is_dir()
+        {
+            let local_files = walk_directory(Path::new(config.local_path()))?;
+            info!("Found {} local files", local_files.keys().count());
+            Ok(local_files)
+        } else {
+            info!("Could not find local directory");
+            App::create_default_directory(config).await?;
+            Ok(HashMap::new())
+        }
+    }
+}
+
+impl App {
+    pub async fn new(aws_config: &aws_config::SdkConfig) -> Result<Self, Error> {
+        let config = Arc::new(Config::load_from_env(aws_config)?);
+        Ok(Self {
+            config: Arc::clone(&config),
+            files: FileViewer::new(&config).await?,
+            table_state: TableState::default().with_selected(0),
+            selected_file: None,
+        })
+    }
+
+    pub fn view_files(&self) -> &Files {
+        &self.files.0
+    }
+    pub fn constraint_len_calculator(&self) -> (u16, u16, u16) {
+        let (key_len, local_len, remote_len) = &self.view_files().iter().fold(
+            (0, 0, 0),
+            |(mut path_len, mut remote_len, mut local_len), (path, kind)| {
+                path_len = cmp::max(path_len, UnicodeWidthStr::width(path.as_str()));
+                match kind {
+                    FileKind::OnlyInRemote { hash, .. } => {
+                        remote_len = cmp::max(
+                            remote_len,
+                            UnicodeWidthStr::width(format!("{:?}", hash).as_str()),
+                        );
+                    }
+                    FileKind::OnlyInLocal { hash, .. } => {
+                        local_len = cmp::max(
+                            local_len,
+                            UnicodeWidthStr::width(format!("{:?}", hash).as_str()),
+                        );
+                    }
+                    FileKind::ExistsInBoth {
+                        local_hash,
+                        remote_hash,
+                        ..
+                    } => {
+                        local_len = cmp::max(
+                            local_len,
+                            UnicodeWidthStr::width(format!("{:?}", local_hash).as_str()),
+                        );
+                        remote_len = cmp::max(
+                            remote_len,
+                            UnicodeWidthStr::width(format!("{:?}", remote_hash).as_str()),
+                        );
+                    }
+                }
+                (path_len, remote_len, local_len)
+            },
+        );
+
+        #[allow(clippy::cast_possible_truncation)]
+        (*key_len as u16, *local_len as u16, *remote_len as u16)
+    }
+
+    pub fn prev_file(&mut self) {
+        let i = match self.table_state.selected() {
+            Some(i) => {
+                if i == 0 {
+                    self.view_files().keys().count() - 1
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+
+        self.table_state.select(Some(i));
+    }
+
+    pub fn next_file(&mut self) {
+        let i = match self.table_state.selected() {
+            Some(i) => {
+                if i >= self.view_files().keys().count() - 1 {
+                    0
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+
+        self.table_state.select(Some(i));
+    }
+
+    async fn create_default_directory(config: &Config) -> Result<(), Error> {
+        info!("Creating default directory");
+        if create_dir(config.local_path()).await.is_ok() {
+            Ok(())
+        } else {
+            Err(Error::FailedToCreateDefaultDirectory)
+        }
+    }
+
+    pub async fn push_file_to_remote(&self, index: usize) -> Result<(), Error> {
+        let (path, kind) = self
+            .view_files()
             .iter()
-            .nth(selected_file_key)
-            .expect("file to be present");
-        let (_, content) = self
-            .local_files
-            .get(path)
-            .expect("file to be present locally");
+            .nth(index)
+            .expect("to pass a valid index");
+        let content = match kind {
+            FileKind::OnlyInRemote { .. } => Err(Error::RemoteSyncFailed),
+            FileKind::OnlyInLocal { contents, .. } => Ok(contents),
+            FileKind::ExistsInBoth { local_contents, .. } => Ok(local_contents),
+        }?;
         self.config
             .aws_client
             .put_object()
@@ -277,24 +347,18 @@ impl App {
         Ok(())
     }
 
-    pub fn pull_file_from_remote(&self, selected_file_key: usize) -> Result<(), Error> {
-        let files = self.view_files().0;
-        let (path, _) = files
+    pub fn pull_file_from_remote(&self, index: usize) -> Result<(), Error> {
+        let (path, kind) = self
+            .view_files()
             .iter()
-            .nth(selected_file_key)
-            .expect("file to be present");
-        let (_, content) = self
-            .remote_files
-            .get(path)
-            .expect("file to be present locally");
+            .nth(index)
+            .expect("to pass a valid index");
+        let content = match kind {
+            FileKind::OnlyInRemote { contents, .. } => Ok(contents),
+            FileKind::OnlyInLocal { .. } => Err(Error::LocalSyncFailed),
+            FileKind::ExistsInBoth { local_contents, .. } => Ok(local_contents),
+        }?;
         fs::write(path, content).map_err(|_| Error::LocalSyncFailed)?;
-        Ok(())
-    }
-
-    pub async fn referesh_app_state(&mut self) -> Result<(), Error> {
-        self.remote_files = App::fetch_remote(&self.config).await?;
-        self.local_files = App::load_local(&self.config).await?;
-
         Ok(())
     }
 }
