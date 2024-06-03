@@ -1,16 +1,47 @@
-use crate::app::App;
+use crate::app::{App, FileDetails};
 
-use ratatui::prelude::{Constraint, Layout, Rect};
+use ratatui::prelude::{Alignment, Constraint, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::Text;
-use ratatui::widgets::{Cell, HighlightSpacing, Row, Table};
+use ratatui::widgets::{Block, Borders, Cell, Clear, HighlightSpacing, Row, Table};
 use ratatui::Frame;
 
 pub fn ui(frame: &mut Frame, app: &mut App) {
-    let rects = Layout::vertical([Constraint::Min(5), Constraint::Length(3)]).split(frame.size());
-    frame.render_widget(Text::from("Cync".bold()), rects[0]);
+    let area = frame.size();
+    let block = Block::default()
+        .title_top("Cync".bold())
+        .title_alignment(Alignment::Center)
+        .borders(Borders::all());
+    let block_inner = block.inner(area);
+    frame.render_widget(block, area);
+    if let Some(idx) = app.selected_file {
+        // Not entirely sure this works
+        // Based on assumption that BTreeMaps are always ordered deterministically
+        // However, underlying data could change (?)
+        // What happens if external service manipulates folder in-between renders?
+        let (
+            _,
+            FileDetails {
+                are_hashes_identical,
+                ..
+            },
+        ) = app.view_files().0.into_iter().nth(idx).unwrap();
+        if !are_hashes_identical {
+            render_popup(frame, app, block_inner)
+        } else {
+            app.selected_file = None;
+        };
+    }
+    render_table(frame, app, block_inner);
+}
 
-    render_table(frame, app, rects[1]);
+fn render_popup(frame: &mut Frame, _app: &mut App, area: Rect) {
+    frame.render_widget(Clear, area);
+    let block = Block::new()
+        .title_bottom("Select an action: Pull (f)rom remote, Push (t)o remote")
+        .title_alignment(Alignment::Center);
+
+    frame.render_widget(block, area);
 }
 
 fn render_table(frame: &mut Frame, app: &mut App, area: Rect) {

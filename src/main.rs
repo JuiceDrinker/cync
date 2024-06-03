@@ -46,11 +46,31 @@ async fn run_app(
         if let Event::Key(key) =
             event::read().map_err(|_| Error::Tui(TuiErrorKind::KeyboardEvent))?
         {
-            match key.code {
-                KeyCode::Char('q') => return Ok(()),
-                KeyCode::Char('j') => app.next_file(),
-                KeyCode::Char('k') => app.prev_file(),
-                _ => {}
+            if app.selected_file.is_none() {
+                match key.code {
+                    KeyCode::Char('q') => return Ok(()),
+                    KeyCode::Char('j') => app.next_file(),
+                    KeyCode::Char('k') => app.prev_file(),
+                    KeyCode::Enter => {
+                        app.selected_file = app.table_state.selected();
+                    }
+                    _ => {}
+                }
+            } else {
+                match key.code {
+                    KeyCode::Char('q') => app.selected_file = None,
+                    KeyCode::Char('t') => {
+                        app.push_file_to_remote(app.selected_file.unwrap()).await?;
+                        app.selected_file = None;
+                        app.referesh_app_state().await?;
+                    }
+                    KeyCode::Char('f') => {
+                        app.pull_file_from_remote(app.selected_file.unwrap())?;
+                        app.selected_file = None;
+                        app.referesh_app_state().await?;
+                    }
+                    _ => {}
+                }
             }
         }
     }

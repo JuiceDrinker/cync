@@ -2,7 +2,8 @@ use aws_sdk_s3::primitives::ByteStream;
 use config::Config;
 use ratatui::widgets::TableState;
 use std::cmp;
-use std::collections::hash_map::Keys;
+use std::collections::btree_map::Keys;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::{collections::HashMap, fs, path::Path};
 use tokio::fs::create_dir;
@@ -23,9 +24,10 @@ enum Source {
 }
 pub struct App {
     pub config: Arc<Config>,
-    pub remote: HashMap<FilePath, FileMetaData>,
-    pub local: HashMap<FilePath, FileMetaData>,
+    pub remote_files: HashMap<FilePath, FileMetaData>,
+    pub local_files: HashMap<FilePath, FileMetaData>,
     pub table_state: TableState,
+    pub selected_file: Option<usize>,
 }
 
 pub struct FileDetails {
@@ -43,7 +45,7 @@ impl FileDetails {
         self.remote_hash
     }
 }
-pub struct FileViewer(pub HashMap<FilePath, FileDetails>);
+pub struct FileViewer(pub BTreeMap<FilePath, FileDetails>);
 
 impl FileViewer {
     fn keys(&self) -> Keys<FilePath, FileDetails> {
@@ -56,9 +58,10 @@ impl App {
         let config = Arc::new(Config::load_from_env(aws_config)?);
         Ok(Self {
             config: Arc::clone(&config),
-            remote: App::fetch_remote(&config).await?,
-            local: App::load_local(&config).await?,
+            remote_files: App::fetch_remote(&config).await?,
+            local_files: App::load_local(&config).await?,
             table_state: TableState::default().with_selected(0),
+            selected_file: None,
         })
     }
 
@@ -110,6 +113,7 @@ impl App {
 
         self.table_state.select(Some(i));
     }
+
     pub fn next_file(&mut self) {
         let i = match self.table_state.selected() {
             Some(i) => {
@@ -127,16 +131,16 @@ impl App {
 
     pub fn view_files(&self) -> FileViewer {
         let files = self
-            .remote
+            .remote_files
             .iter()
             .map(|(path, (hash, _))| (path, (Source::Remote, hash)))
             .chain(
-                self.local
+                self.local_files
                     .iter()
                     .map(|(path, (hash, _))| (path, (Source::Local, hash))),
             )
             .fold(
-                HashMap::<FilePath, FileDetails>::new(),
+                BTreeMap::<FilePath, FileDetails>::new(),
                 |mut acc, (path, (source, hash))| {
                     match acc.get_mut(path) {
                         Some(existing) => match source {
@@ -178,12 +182,6 @@ impl App {
                 },
             );
         FileViewer(files)
-    }
-
-    async fn run_sync(self) -> Result<(), Error> {
-        self.sync_local_with_remote().await?;
-        self.sync_remote_with_local().await?;
-        Ok(())
     }
 
     async fn load_local(config: &Config) -> Result<HashMap<FilePath, FileMetaData>, Error> {
@@ -257,61 +255,46 @@ impl App {
         Ok(remote)
     }
 
-    async fn sync_local_with_remote(&self) -> Result<(), Error> {
-        let (successful, error): (Vec<_>, Vec<_>) = futures::future::join_all(
-            self.remote
-                .iter()
-                .filter_map(|(path, (_, content))| {
-                    if !self.local.contains_key(path) {
-                        return Some((path, content));
-                    }
-                    None
-                })
-                .map(|(path, content)| tokio::fs::write(path, content)),
-        )
-        .await
-        .into_iter()
-        .partition(Result::is_ok);
-
-        if error.is_empty() {
-            info!("Overwrote {} local files", successful.len());
-            Ok(())
-        } else {
-            Err(Error::LocalSyncFailed)
-        }
+    pub async fn push_file_to_remote(&self, selected_file_key: usize) -> Result<(), Error> {
+        let files = self.view_files().0;
+        let (path, _) = files
+            .iter()
+            .nth(selected_file_key)
+            .expect("file to be present");
+        let (_, content) = self
+            .local_files
+            .get(path)
+            .expect("file to be present locally");
+        self.config
+            .aws_client
+            .put_object()
+            .bucket(self.config.bucket_name())
+            .key(path)
+            .body(ByteStream::from(content.clone()))
+            .send()
+            .await
+            .map_err(|_| Error::RemoteSyncFailed)?;
+        Ok(())
     }
 
-    async fn sync_remote_with_local(&self) -> Result<(), Error> {
-        let (successful, error): (Vec<_>, Vec<_>) = futures::future::join_all(
-            self.local
-                .iter()
-                .filter_map(|(path, (hash, content))| {
-                    if let Some((remote_hash, _)) = self.remote.get(path) {
-                        if hash != remote_hash {
-                            return Some((path, content));
-                        }
-                    }
-                    None
-                })
-                .map(|(path, content)| {
-                    self.config
-                        .aws_client
-                        .put_object()
-                        .bucket(self.config.bucket_name())
-                        .key(path)
-                        .body(ByteStream::from(content.clone()))
-                        .send()
-                }),
-        )
-        .await
-        .into_iter()
-        .partition(Result::is_ok);
+    pub fn pull_file_from_remote(&self, selected_file_key: usize) -> Result<(), Error> {
+        let files = self.view_files().0;
+        let (path, _) = files
+            .iter()
+            .nth(selected_file_key)
+            .expect("file to be present");
+        let (_, content) = self
+            .remote_files
+            .get(path)
+            .expect("file to be present locally");
+        fs::write(path, content).map_err(|_| Error::LocalSyncFailed)?;
+        Ok(())
+    }
 
-        if error.is_empty() {
-            info!("Overwrote {} remote files", successful.len());
-            Ok(())
-        } else {
-            Err(Error::RemoteSyncFailed)
-        }
+    pub async fn referesh_app_state(&mut self) -> Result<(), Error> {
+        self.remote_files = App::fetch_remote(&self.config).await?;
+        self.local_files = App::load_local(&self.config).await?;
+
+        Ok(())
     }
 }
