@@ -2,6 +2,7 @@ use aws_sdk_s3::primitives::ByteStream;
 use config::Config;
 use ratatui::widgets::TableState;
 use std::cmp;
+use std::collections::hash_map::Keys;
 use std::sync::Arc;
 use std::{collections::HashMap, fs, path::Path};
 use tokio::fs::create_dir;
@@ -30,6 +31,7 @@ pub struct App {
 pub struct FileDetails {
     pub remote_hash: Option<md5::Digest>,
     pub local_hash: Option<md5::Digest>,
+    pub are_hashes_identical: bool,
 }
 
 impl FileDetails {
@@ -43,6 +45,12 @@ impl FileDetails {
 }
 pub struct FileViewer(pub HashMap<FilePath, FileDetails>);
 
+impl FileViewer {
+    fn keys(&self) -> Keys<FilePath, FileDetails> {
+        self.0.keys()
+    }
+}
+
 impl App {
     pub async fn new(aws_config: &aws_config::SdkConfig) -> Result<Self, Error> {
         let config = Arc::new(Config::load_from_env(aws_config)?);
@@ -50,7 +58,7 @@ impl App {
             config: Arc::clone(&config),
             remote: App::fetch_remote(&config).await?,
             local: App::load_local(&config).await?,
-            table_state: TableState::default(),
+            table_state: TableState::default().with_selected(0),
         })
     }
 
@@ -63,6 +71,7 @@ impl App {
                 FileDetails {
                     remote_hash,
                     local_hash,
+                    ..
                 },
             )| {
                 path_len = cmp::max(path_len, UnicodeWidthStr::width(path.as_str()));
@@ -86,6 +95,36 @@ impl App {
         #[allow(clippy::cast_possible_truncation)]
         (*key_len as u16, *local_len as u16, *remote_len as u16)
     }
+
+    pub fn prev_file(&mut self) {
+        let i = match self.table_state.selected() {
+            Some(i) => {
+                if i == 0 {
+                    self.view_files().keys().count() - 1
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+
+        self.table_state.select(Some(i));
+    }
+    pub fn next_file(&mut self) {
+        let i = match self.table_state.selected() {
+            Some(i) => {
+                if i >= self.view_files().keys().count() - 1 {
+                    0
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+
+        self.table_state.select(Some(i));
+    }
+
     pub fn view_files(&self) -> FileViewer {
         let files = self
             .remote
@@ -101,8 +140,16 @@ impl App {
                 |mut acc, (path, (source, hash))| {
                     match acc.get_mut(path) {
                         Some(existing) => match source {
-                            Source::Remote => existing.remote_hash = Some(*hash),
-                            Source::Local => existing.local_hash = Some(*hash),
+                            Source::Remote => {
+                                existing.remote_hash = Some(*hash);
+                                existing.are_hashes_identical =
+                                    existing.local_hash() == Some(*hash);
+                            }
+                            Source::Local => {
+                                existing.local_hash = Some(*hash);
+                                existing.are_hashes_identical =
+                                    existing.remote_hash() == Some(*hash);
+                            }
                         },
                         None => match source {
                             Source::Remote => {
@@ -111,6 +158,7 @@ impl App {
                                     FileDetails {
                                         remote_hash: Some(*hash),
                                         local_hash: None,
+                                        are_hashes_identical: false,
                                     },
                                 );
                             }
@@ -120,6 +168,7 @@ impl App {
                                     FileDetails {
                                         remote_hash: Some(*hash),
                                         local_hash: None,
+                                        are_hashes_identical: true,
                                     },
                                 );
                             }

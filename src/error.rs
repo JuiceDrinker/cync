@@ -30,6 +30,9 @@ pub enum Error {
 
     #[error("Failed to create default Cync directory")]
     FailedToCreateDefaultDirectory,
+
+    #[error("Failed to setup logging")]
+    InitializeLogging,
 }
 
 #[derive(Error, Debug)]
@@ -42,6 +45,9 @@ pub enum TuiErrorKind {
 
     #[error("Error drawing to terminal")]
     Drawing,
+
+    #[error("Error reading keyboard event")]
+    KeyboardEvent,
 }
 
 #[derive(Error, Debug)]
