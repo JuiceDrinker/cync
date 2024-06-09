@@ -1,7 +1,8 @@
 use crate::error::Error;
-use app::App;
+use app::{Actions, App, Mode};
 use crossterm::event::{self, Event, KeyCode};
 use error::TuiErrorKind;
+use file_viewer::FileKind;
 use logging::initialize_logging;
 use ratatui::prelude::CrosstermBackend;
 use ratatui::Terminal;
@@ -12,6 +13,7 @@ use util::{initialize_terminal, restore_terminal};
 mod app;
 mod config;
 mod error;
+mod file_viewer;
 mod logging;
 mod ui;
 mod util;
@@ -46,29 +48,70 @@ async fn run_app(
         if let Event::Key(key) =
             event::read().map_err(|_| Error::Tui(TuiErrorKind::KeyboardEvent))?
         {
-            if app.selected_file.is_none() {
-                match key.code {
+            match &app.mode {
+                app::Mode::Default => match key.code {
                     KeyCode::Char('q') => return Ok(()),
                     KeyCode::Char('j') => app.next_file(),
                     KeyCode::Char('k') => app.prev_file(),
-                    KeyCode::Enter => {
-                        app.selected_file = app.table_state.selected();
-                    }
+                    KeyCode::Enter => app.select_file(app.table_state.selected().unwrap()),
                     _ => {}
-                }
-            } else {
-                match key.code {
-                    KeyCode::Char('q') => app.selected_file = None,
-                    KeyCode::Char('t') => {
-                        app.push_file_to_remote(app.selected_file.unwrap()).await?;
-                        app.selected_file = None;
-                    }
-                    KeyCode::Char('f') => {
-                        app.pull_file_from_remote(app.selected_file.unwrap())?;
-                        app.selected_file = None;
-                    }
-                    _ => {}
-                }
+                },
+                app::Mode::PendingAction(kind) => match kind {
+                    FileKind::OnlyInRemote { .. } => match key.code {
+                        KeyCode::Char('t') => {
+                            app.pull_file_from_remote(app.selected_file.unwrap())?;
+                            app.reload_files().await?;
+                            app.selected_file = None;
+                        }
+                        KeyCode::Char('q') => {
+                            app.selected_file = None;
+                            app.mode = Mode::Default;
+                        }
+                        _ => {}
+                    },
+                    FileKind::OnlyInLocal { .. } => match key.code {
+                        KeyCode::Char('f') => {
+                            app.pull_file_from_remote(app.selected_file.unwrap())?;
+                            app.reload_files().await?;
+                            app.selected_file = None;
+                        }
+                        KeyCode::Char('q') => {
+                            app.selected_file = None;
+                            app.mode = Mode::Default;
+                        }
+                        _ => {}
+                    },
+                    FileKind::ExistsInBoth {
+                        local_hash,
+                        remote_hash,
+                        ..
+                    } => match key.code {
+                        KeyCode::Char('f') => {
+                            if local_hash != remote_hash {
+                                app.pull_file_from_remote(app.selected_file.unwrap())?;
+                                app.reload_files().await?;
+                                app.selected_file = None;
+                                app.mode = Mode::ActionSuccessful(Actions::PullFromRemote);
+                                app.mode = Mode::Default;
+                            }
+                        }
+                        KeyCode::Char('t') => {
+                            if local_hash != remote_hash {
+                                app.push_file_to_remote(app.selected_file.unwrap()).await?;
+                                app.reload_files().await?;
+                                app.selected_file = None;
+                                app.mode = Mode::ActionSuccessful(Actions::PushToRemote);
+                                app.mode = Mode::Default;
+                            }
+                        }
+                        KeyCode::Char('q') => {
+                            app.selected_file = None;
+                            app.mode = Mode::Default;
+                        }
+                        _ => {}
+                    },
+                },
+                _ => {}
             }
         }
     }

@@ -1,8 +1,9 @@
-use crate::app::{App, FileKind};
+use crate::app::{Actions, App, Mode};
+use crate::file_viewer::FileKind;
 use ratatui::prelude::{Alignment, Constraint, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::Text;
-use ratatui::widgets::{Block, Borders, Cell, Clear, HighlightSpacing, Row, Table};
+use ratatui::widgets::{Block, Borders, Cell, HighlightSpacing, Row, Table};
 use ratatui::Frame;
 
 pub fn ui(frame: &mut Frame, app: &mut App) {
@@ -13,31 +14,28 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
         .borders(Borders::all());
     let block_inner = block.inner(area);
     frame.render_widget(block, area);
-    // if let Some(idx) = app.selected_file {
-    //     // Not entirely sure this works
-    //     // Based on assumption that BTreeMaps are always ordered deterministically
-    //     // However, underlying data could change (?)
-    //     // What happens if external service manipulates folder in-between renders?
-    //     let (
-    //         _,
-    //         FileDetails {
-    //             are_hashes_identical,
-    //             ..
-    //         },
-    //     ) = app.view_files().iter().nth(idx).unwrap();
-    //     if !are_hashes_identical {
-    //         render_popup(frame, app, block_inner)
-    //     } else {
-    //         app.selected_file = None;
-    //     };
-    // }
+
     render_table(frame, app, block_inner);
+    render_footer(frame, app, block_inner);
 }
 
-fn render_popup(frame: &mut Frame, _app: &mut App, area: Rect) {
-    frame.render_widget(Clear, area);
+fn render_footer(frame: &mut Frame, app: &mut App, area: Rect) {
+    let text = match &app.mode {
+        Mode::Default => String::from("Up/Down: j/k, Select: <Enter>"),
+        Mode::PendingAction(kind) => match kind {
+            FileKind::OnlyInRemote { .. } => String::from("Select an action: Pull (f)rom remote"),
+            FileKind::OnlyInLocal { .. } => String::from("Select an action: Push (t)o remote"),
+            FileKind::ExistsInBoth { .. } => {
+                String::from("Select an action: Push (t)o remote / Pull (f)rom remote")
+            }
+        },
+        Mode::ActionSuccessful(action) => match action {
+            Actions::PullFromRemote => String::from("Successfully pulled file from remote"),
+            Actions::PushToRemote => String::from("Sucessfuly pushed file to remote"),
+        },
+    };
     let block = Block::new()
-        .title_bottom("Select an action: Pull (f)rom remote, Push (t)o remote")
+        .title_bottom(text)
         .title_alignment(Alignment::Center);
 
     frame.render_widget(block, area);
