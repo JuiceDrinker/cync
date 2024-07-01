@@ -1,5 +1,5 @@
 use crate::error::Error;
-use app::{Actions, App, Mode};
+use app::{App, Mode};
 use crossterm::event::{self, Event, KeyCode};
 use error::TuiErrorKind;
 use file_viewer::FileKind;
@@ -21,6 +21,7 @@ mod util;
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     initialize_logging()?;
+
     let mut terminal = initialize_terminal()?;
     let aws_config = &aws_config::load_from_env().await;
 
@@ -86,21 +87,19 @@ async fn run_app(
                         remote_hash,
                         ..
                     } => match key.code {
-                        KeyCode::Char('f') => {
+                        KeyCode::Char('f') if local_hash != remote_hash => {
                             if local_hash != remote_hash {
                                 app.pull_file_from_remote(app.selected_file.unwrap())?;
                                 app.reload_files().await?;
                                 app.selected_file = None;
-                                app.mode = Mode::ActionSuccessful(Actions::PullFromRemote);
                                 app.mode = Mode::Default;
                             }
                         }
-                        KeyCode::Char('t') => {
+                        KeyCode::Char('t') if local_hash != remote_hash => {
                             if local_hash != remote_hash {
                                 app.push_file_to_remote(app.selected_file.unwrap()).await?;
                                 app.reload_files().await?;
                                 app.selected_file = None;
-                                app.mode = Mode::ActionSuccessful(Actions::PushToRemote);
                                 app.mode = Mode::Default;
                             }
                         }
@@ -111,7 +110,6 @@ async fn run_app(
                         _ => {}
                     },
                 },
-                _ => {}
             }
         }
     }

@@ -1,4 +1,4 @@
-use crate::app::{Actions, App, Mode};
+use crate::app::{App, Mode};
 use crate::file_viewer::FileKind;
 use ratatui::prelude::{Alignment, Constraint, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
@@ -25,13 +25,17 @@ fn render_footer(frame: &mut Frame, app: &mut App, area: Rect) {
         Mode::PendingAction(kind) => match kind {
             FileKind::OnlyInRemote { .. } => String::from("Select an action: Pull (f)rom remote"),
             FileKind::OnlyInLocal { .. } => String::from("Select an action: Push (t)o remote"),
-            FileKind::ExistsInBoth { .. } => {
-                String::from("Select an action: Push (t)o remote / Pull (f)rom remote")
+            FileKind::ExistsInBoth {
+                local_hash,
+                remote_hash,
+                ..
+            } => {
+                if local_hash != remote_hash {
+                    String::from("Select an action: Push (t)o remote / Pull (f)rom remote")
+                } else {
+                    String::from("No actions availabble. Press (q) to quit")
+                }
             }
-        },
-        Mode::ActionSuccessful(action) => match action {
-            Actions::PullFromRemote => String::from("Successfully pulled file from remote"),
-            Actions::PushToRemote => String::from("Sucessfuly pushed file to remote"),
         },
     };
     let block = Block::new()

@@ -18,15 +18,9 @@ pub type FileHash = md5::Digest;
 pub type FileContents = Vec<u8>;
 pub type FileMetaData = (FileHash, FileContents);
 
-pub enum Actions {
-    PullFromRemote,
-    PushToRemote,
-}
-
 pub enum Mode {
     Default,
     PendingAction(FileKind),
-    ActionSuccessful(Actions),
 }
 
 pub struct App {
@@ -48,7 +42,7 @@ impl App {
 
 impl App {
     pub async fn new(aws_config: &aws_config::SdkConfig) -> Result<Self, Error> {
-        let config = Arc::new(Config::load_from_env(aws_config)?);
+        let config = Arc::new(Config::load(aws_config)?);
         Ok(Self {
             mode: Mode::Default,
             config: Arc::clone(&config),
@@ -180,10 +174,15 @@ impl App {
         let content = match kind {
             FileKind::OnlyInRemote { contents, .. } => Ok(contents),
             FileKind::OnlyInLocal { .. } => Err(Error::LocalSyncFailed),
+            // TODO: Remote contents could be the correct one? 
             FileKind::ExistsInBoth { local_contents, .. } => Ok(local_contents),
         }?;
-        fs::write(format!("{}/{}", self.config.local_path(), path), content)
-            .map_err(|_| Error::LocalSyncFailed)?;
+
+        fs::write(
+            format!("{}/{}", self.config.local_path().display(), path),
+            content,
+        )
+        .map_err(|_| Error::LocalSyncFailed)?;
         Ok(())
     }
 }
