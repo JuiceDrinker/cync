@@ -10,7 +10,6 @@ aws-sdk-s3 = "1.4.0"
 aws-config = { version = "1.1.7", features = ["behavior-version-latest"]}
 md5 = "0.7.0"
 thiserror = "1.0.61"
-tokio = { version = "1.37.0", features = ["full"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 futures = "0.3.30"
@@ -23,5 +22,6 @@ directories = "5.0.1"
 tracing-error = "0.2.0"
 xdg = "2.5.2"
 toml = "0.8.14"
-serde = {version= "1.0.203", features = ["derive"]}
-clap = "4.5.8"
+clap = { version = "4.5.8", features = ["derive"] }
+tokio = { version = "1.38.0", features = ["full"] }
+serde = { version = "1.0.203", features = ["derive"] }

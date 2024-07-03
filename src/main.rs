@@ -1,5 +1,6 @@
 use crate::error::Error;
 use app::{App, Mode};
+use clap::Parser;
 use crossterm::event::{self, Event, KeyCode};
 use error::TuiErrorKind;
 use file_viewer::FileKind;
@@ -18,23 +19,37 @@ mod logging;
 mod ui;
 mod util;
 
+// cync -> Run TUI
+// cync init -> Run setup
+
+#[derive(Parser)]
+struct Args {
+    init: Option<String>,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     initialize_logging()?;
 
-    let mut terminal = initialize_terminal()?;
-    let aws_config = &aws_config::load_from_env().await;
+    let Args { init } = Args::parse();
 
-    let mut app = App::new(aws_config).await?;
-    let res = run_app(&mut terminal, &mut app).await;
+    if init.is_some() {
+        todo!("run wizard")
+    } else {
+        let mut terminal = initialize_terminal()?;
+        let aws_config = &aws_config::load_from_env().await;
 
-    restore_terminal(terminal)?;
+        let mut app = App::new(aws_config).await?;
+        let res = run_app(&mut terminal, &mut app).await;
 
-    if let Err(err) = res {
-        println!("{err:?}");
+        restore_terminal(terminal)?;
+
+        if let Err(err) = res {
+            println!("{err:?}");
+        }
+
+        Ok(())
     }
-
-    Ok(())
 }
 async fn run_app(
     terminal: &mut Terminal<CrosstermBackend<Stderr>>,
