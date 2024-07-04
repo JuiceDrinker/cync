@@ -46,6 +46,7 @@ async fn main() -> Result<(), Error> {
     if let Err(err) = res {
         println!("{err:?}");
     }
+
     Ok(())
 }
 
