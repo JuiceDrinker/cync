@@ -174,7 +174,7 @@ impl App {
         let content = match kind {
             FileKind::OnlyInRemote { contents, .. } => Ok(contents),
             FileKind::OnlyInLocal { .. } => Err(Error::LocalSyncFailed),
-            // TODO: Remote contents could be the correct one? 
+            // TODO: Remote contents could be the correct one?
             FileKind::ExistsInBoth { local_contents, .. } => Ok(local_contents),
         }?;
 

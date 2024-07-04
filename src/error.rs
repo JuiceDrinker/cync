@@ -26,6 +26,30 @@ pub enum Error {
 
     #[error("Failed to setup logging")]
     InitializeLogging,
+
+    #[error("Failed to run setup wizard")]
+    SetupWizard(SetupWizardErrorKind),
+
+    #[error("Config file missing")]
+    ConfigFileMissing,
+
+    #[error("Config file corrupted")]
+    ConfigFileCorrupted,
+}
+
+#[derive(Error, Debug)]
+pub enum SetupWizardErrorKind {
+    #[error("Failed to run setup prompt")]
+    Prompt,
+
+    #[error("Failed to create remote folder")]
+    BucketCreation,
+
+    #[error("Failed to create local folder")]
+    LocalDirectoryCreation,
+
+    #[error("Failed to local home directory")]
+    HomeDirectory,
 }
 
 #[derive(Error, Debug)]

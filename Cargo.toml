@@ -25,3 +25,5 @@ toml = "0.8.14"
 clap = { version = "4.5.8", features = ["derive"] }
 tokio = { version = "1.38.0", features = ["full"] }
 serde = { version = "1.0.203", features = ["derive"] }
+requestty = "0.5.0"
+home = "0.5.9"

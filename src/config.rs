@@ -16,10 +16,10 @@ pub struct Config {
 
 impl Config {
     pub fn load(aws_config: &aws_config::SdkConfig) -> Result<Self, Error> {
-        // TODO: Handle errors
-        let config =
-            toml::from_str::<ConfigFile>(&String::from_utf8(Config::get_config()).unwrap())
-                .unwrap();
+        let config = toml::from_str::<ConfigFile>(
+            &String::from_utf8(Config::get_config()?).map_err(|_| Error::ConfigFileMissing)?,
+        )
+        .map_err(|_| Error::ConfigFileCorrupted)?;
 
         Ok(Config {
             local_directory: config.local_directory,
@@ -28,14 +28,15 @@ impl Config {
         })
     }
 
-    fn get_config() -> Vec<u8> {
-        // TODO: Handle errors
-        fs::read(
+    fn get_config() -> Result<Vec<u8>, Error> {
+        let config_file_path = fs::read(
             xdg::BaseDirectories::with_prefix("cync")
-                .unwrap()
+                .map_err(|_| Error::ConfigFileCorrupted)?
                 .get_config_file("cync"),
         )
-        .unwrap()
+        .map_err(|_| Error::ConfigFileMissing)?;
+
+        Ok(config_file_path)
     }
 
     pub fn local_path(&self) -> &PathBuf {

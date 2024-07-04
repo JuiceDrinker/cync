@@ -7,6 +7,7 @@ use file_viewer::FileKind;
 use logging::initialize_logging;
 use ratatui::prelude::CrosstermBackend;
 use ratatui::Terminal;
+use setup::run_setup_wizard;
 use std::io::Stderr;
 use ui::ui;
 use util::{initialize_terminal, restore_terminal};
@@ -16,11 +17,9 @@ mod config;
 mod error;
 mod file_viewer;
 mod logging;
+mod setup;
 mod ui;
 mod util;
-
-// cync -> Run TUI
-// cync init -> Run setup
 
 #[derive(Parser)]
 struct Args {
@@ -30,27 +29,26 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     initialize_logging()?;
+    let aws_config = &aws_config::load_from_env().await;
 
     let Args { init } = Args::parse();
 
-    if init.is_some() {
-        todo!("run wizard")
+    let res = if init.is_some() {
+        run_setup_wizard().await
     } else {
         let mut terminal = initialize_terminal()?;
-        let aws_config = &aws_config::load_from_env().await;
-
         let mut app = App::new(aws_config).await?;
-        let res = run_app(&mut terminal, &mut app).await;
-
+        let app_res = run_app(&mut terminal, &mut app).await;
         restore_terminal(terminal)?;
+        app_res
+    };
 
-        if let Err(err) = res {
-            println!("{err:?}");
-        }
-
-        Ok(())
+    if let Err(err) = res {
+        println!("{err:?}");
     }
+    Ok(())
 }
+
 async fn run_app(
     terminal: &mut Terminal<CrosstermBackend<Stderr>>,
     app: &mut App,
