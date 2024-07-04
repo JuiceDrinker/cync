@@ -59,6 +59,7 @@ async fn run_app(
                 ui(frame, app);
             })
             .map_err(|_| Error::Tui(TuiErrorKind::Drawing))?;
+
         if let Event::Key(key) =
             event::read().map_err(|_| Error::Tui(TuiErrorKind::KeyboardEvent))?
         {

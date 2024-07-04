@@ -165,7 +165,7 @@ impl FileViewer {
         let mut paginated_response = config
             .aws_client()
             .list_objects_v2()
-            .bucket(config.bucket_name())
+            .bucket(config.remote_directory())
             .max_keys(10)
             .into_paginator()
             .send();
@@ -176,7 +176,7 @@ impl FileViewer {
                     if let Ok(remote_object) = config
                         .aws_client()
                         .get_object()
-                        .bucket(config.bucket_name())
+                        .bucket(config.remote_directory())
                         .key(object.key().expect("Uploaded objects must have a key"))
                         .send()
                         .await
@@ -208,11 +208,11 @@ impl FileViewer {
     }
 
     async fn load_local(config: &Config) -> Result<HashMap<FilePath, FileMetaData>, Error> {
-        if fs::metadata(config.local_path())
+        if fs::metadata(config.local_directory())
             .map_err(|_| Error::LoadingLocalFiles(error::LoadingLocalFiles::FileSystem))?
             .is_dir()
         {
-            let local_files = walk_directory(Path::new(config.local_path()))?;
+            let local_files = walk_directory(Path::new(config.local_directory()))?;
             info!("Found {} local files", local_files.keys().count());
             Ok(local_files)
         } else {

@@ -134,7 +134,7 @@ impl App {
 
     pub async fn create_default_directory(config: &Config) -> Result<(), Error> {
         info!("Creating default directory");
-        if create_dir(config.local_path()).await.is_ok() {
+        if create_dir(config.local_directory()).await.is_ok() {
             Ok(())
         } else {
             Err(Error::FailedToCreateDefaultDirectory)
@@ -156,7 +156,7 @@ impl App {
         self.config
             .aws_client
             .put_object()
-            .bucket(self.config.bucket_name())
+            .bucket(self.config.remote_directory())
             .key(path)
             .body(ByteStream::from(content.clone()))
             .send()
@@ -179,7 +179,7 @@ impl App {
         }?;
 
         fs::write(
-            format!("{}/{}", self.config.local_path().display(), path),
+            format!("{}/{}", self.config.local_directory().display(), path),
             content,
         )
         .map_err(|_| Error::LocalSyncFailed)?;

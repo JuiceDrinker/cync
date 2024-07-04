@@ -1,4 +1,7 @@
-use crate::error::{Error, SetupWizardErrorKind};
+use crate::{
+    config::ConfigFile,
+    error::{Error, SetupWizardErrorKind},
+};
 use requestty::Question;
 use std::{collections::HashMap, fs, sync::Arc};
 
@@ -42,12 +45,15 @@ pub async fn run_setup_wizard() -> Result<(), Error> {
         let aws_config = &aws_config::load_from_env().await;
         let aws_client = aws_sdk_s3::Client::new(aws_config);
 
-        aws_client
+        match aws_client
             .create_bucket()
             .bucket(remote_directory_name)
             .send()
             .await
-            .map_err(|_| Error::SetupWizard(SetupWizardErrorKind::BucketCreation))
+        {
+            Ok(_) => Ok(remote_directory_name.clone()),
+            Err(_) => Err(Error::SetupWizard(SetupWizardErrorKind::BucketCreation)),
+        }
     });
 
     let home_dir = match home::home_dir() {
@@ -62,9 +68,23 @@ pub async fn run_setup_wizard() -> Result<(), Error> {
     ))
     .map_err(|_| Error::SetupWizard(SetupWizardErrorKind::LocalDirectoryCreation))?;
 
-    remote_handle
+    let remote_directory_name = remote_handle
         .await
         .map_err(|_| Error::SetupWizard(SetupWizardErrorKind::BucketCreation))??;
+
+    let config_file = ConfigFile {
+        remote_directory_name: remote_directory_name.to_string(),
+        local_directory_name: local_directory_name.into(),
+    };
+
+    let toml = toml::to_string(&config_file).unwrap();
+
+    let xdg_config = xdg::BaseDirectories::with_prefix("cync")
+        .unwrap()
+        .get_config_home();
+
+    fs::write(format!("{}/config.toml", xdg_config.display()), toml)
+        .map_err(|_| Error::SetupWizard(SetupWizardErrorKind::ConfigFile))?;
 
     Ok(())
 }

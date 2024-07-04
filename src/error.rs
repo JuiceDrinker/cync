@@ -48,6 +48,9 @@ pub enum SetupWizardErrorKind {
     #[error("Failed to create local folder")]
     LocalDirectoryCreation,
 
+    #[error("Failed to create config file")]
+    ConfigFile,
+
     #[error("Failed to local home directory")]
     HomeDirectory,
 }
