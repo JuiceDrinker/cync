@@ -154,18 +154,20 @@ impl App {
             FileKind::ExistsInBoth { local_contents, .. } => Ok(local_contents),
         }?;
         self.config
-            .aws_client
-            .put_object()
-            .bucket(self.config.remote_directory())
-            .key(path)
-            .body(ByteStream::from(content.clone()))
-            .send()
+            .aws_client()
+            .put_object(
+                self.config.remote_directory(),
+                path,
+                ByteStream::from(content.clone()),
+            )
             .await
             .map_err(|_| Error::RemoteSyncFailed)?;
         Ok(())
     }
 
     pub fn pull_file_from_remote(&self, index: usize) -> Result<(), Error> {
+        // TODO: S3 file paths are absolute paths, expect and strip remote_directory_name before
+        // persisiting in local_directory
         let (path, kind) = self
             .view_files()
             .iter()

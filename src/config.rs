@@ -1,5 +1,4 @@
-use crate::error::Error;
-use aws_sdk_s3::Client;
+use crate::{error::Error, s3::S3Client};
 use std::{fs, path::PathBuf};
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -11,7 +10,7 @@ pub struct ConfigFile {
 pub struct Config {
     pub remote_directory_name: String,
     pub local_directory_name: PathBuf,
-    pub aws_client: Client,
+    pub aws_client: S3Client,
 }
 
 impl Config {
@@ -25,7 +24,7 @@ impl Config {
         Ok(Config {
             local_directory_name: config.local_directory_name,
             remote_directory_name: config.remote_directory_name,
-            aws_client: aws_sdk_s3::Client::new(aws_config),
+            aws_client: S3Client::new(aws_sdk_s3::Client::new(aws_config)),
         })
     }
 
@@ -48,7 +47,7 @@ impl Config {
         &self.remote_directory_name
     }
 
-    pub fn aws_client(&self) -> &Client {
+    pub fn aws_client(&self) -> &S3Client {
         &self.aws_client
     }
 }

@@ -15,46 +15,6 @@ enum Source {
 
 pub type Files = BTreeMap<FilePath, FileKind>;
 
-impl FileKind {
-    fn create_local(hash: md5::Digest, contents: Vec<u8>) -> Self {
-        FileKind::OnlyInLocal { hash, contents }
-    }
-    fn create_dual_entry(
-        remote_hash: md5::Digest,
-        remote_contents: Vec<u8>,
-        local_hash: md5::Digest,
-        local_contents: Vec<u8>,
-    ) -> Self {
-        FileKind::ExistsInBoth {
-            local_hash,
-            local_contents,
-            remote_hash,
-            remote_contents,
-        }
-    }
-    fn create_remote(hash: md5::Digest, contents: Vec<u8>) -> Self {
-        FileKind::OnlyInRemote { hash, contents }
-    }
-}
-
-#[derive(Clone)]
-pub enum FileKind {
-    OnlyInRemote {
-        hash: md5::Digest,
-        contents: Vec<u8>,
-    },
-    OnlyInLocal {
-        hash: md5::Digest,
-        contents: Vec<u8>,
-    },
-    ExistsInBoth {
-        local_hash: md5::Digest,
-        local_contents: Vec<u8>,
-        remote_hash: md5::Digest,
-        remote_contents: Vec<u8>,
-    },
-}
-
 pub struct FileViewer(pub BTreeMap<FilePath, FileKind>);
 
 impl FileViewer {
@@ -164,21 +124,18 @@ impl FileViewer {
         let mut remote = HashMap::new();
         let mut paginated_response = config
             .aws_client()
-            .list_objects_v2()
-            .bucket(config.remote_directory())
-            .max_keys(10)
-            .into_paginator()
-            .send();
+            .list_objects(config.remote_directory())
+            .await;
 
         while let Some(result) = paginated_response.next().await {
             if let Ok(output) = result {
                 for object in output.contents() {
                     if let Ok(remote_object) = config
                         .aws_client()
-                        .get_object()
-                        .bucket(config.remote_directory())
-                        .key(object.key().expect("Uploaded objects must have a key"))
-                        .send()
+                        .get_object(
+                            config.remote_directory(),
+                            object.key().expect("uploaded objects must have a key"),
+                        )
                         .await
                     {
                         let aggregated_bytes = remote_object
@@ -220,5 +177,47 @@ impl FileViewer {
             App::create_default_directory(config).await?;
             Ok(HashMap::new())
         }
+    }
+}
+
+#[derive(Clone)]
+pub enum FileKind {
+    OnlyInRemote {
+        hash: md5::Digest,
+        contents: Vec<u8>,
+    },
+    OnlyInLocal {
+        hash: md5::Digest,
+        contents: Vec<u8>,
+    },
+    ExistsInBoth {
+        local_hash: md5::Digest,
+        local_contents: Vec<u8>,
+        remote_hash: md5::Digest,
+        remote_contents: Vec<u8>,
+    },
+}
+
+impl FileKind {
+    fn create_local(hash: md5::Digest, contents: Vec<u8>) -> Self {
+        FileKind::OnlyInLocal { hash, contents }
+    }
+
+    fn create_dual_entry(
+        remote_hash: md5::Digest,
+        remote_contents: Vec<u8>,
+        local_hash: md5::Digest,
+        local_contents: Vec<u8>,
+    ) -> Self {
+        FileKind::ExistsInBoth {
+            local_hash,
+            local_contents,
+            remote_hash,
+            remote_contents,
+        }
+    }
+
+    fn create_remote(hash: md5::Digest, contents: Vec<u8>) -> Self {
+        FileKind::OnlyInRemote { hash, contents }
     }
 }

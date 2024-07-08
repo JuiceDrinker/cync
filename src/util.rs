@@ -49,6 +49,7 @@ pub fn get_path_from_entry(entry: &DirEntry) -> String {
         .expect("path to be utf-8")
         .to_string()
 }
+
 pub fn initialize_terminal() -> Result<Terminal<CrosstermBackend<Stderr>>, Error> {
     enable_raw_mode().map_err(|_| Error::Tui(TuiErrorKind::Initilization))?;
     let mut stderr = std::io::stderr();

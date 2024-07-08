@@ -12,6 +12,7 @@ use std::io::Stderr;
 use ui::ui;
 use util::{initialize_terminal, restore_terminal};
 
+mod s3;
 mod app;
 mod config;
 mod error;

@@ -27,6 +27,8 @@ tokio = { version = "1.38.0", features = ["full"] }
 serde = { version = "1.0.203", features = ["derive"] }
 requestty = "0.5.0"
 home = "0.5.9"
+aws-smithy-runtime-api = { version = "1.7.1", features = ["client"] }
+aws-smithy-async = "1.2.1"
 
 [dev-dependencies]
 mockall = "0.12.1"
