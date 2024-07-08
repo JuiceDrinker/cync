@@ -38,6 +38,7 @@ fn render_footer(frame: &mut Frame, app: &mut App, area: Rect) {
             }
         },
     };
+
     let block = Block::new()
         .title_bottom(text)
         .title_alignment(Alignment::Center);
