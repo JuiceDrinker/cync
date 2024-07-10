@@ -33,9 +33,7 @@ pub struct App {
 
 impl App {
     pub async fn reload_files(&mut self) -> Result<(), Error> {
-        let files = FileViewer::new(&self.config).await?;
-        self.files = files;
-
+        self.files = FileViewer::new().load_files(&self.config).await?;
         Ok(())
     }
 }
@@ -46,7 +44,7 @@ impl App {
         Ok(Self {
             mode: Mode::Default,
             config: Arc::clone(&config),
-            files: FileViewer::new(&config).await?,
+            files: FileViewer::new().load_files(&config).await?,
             table_state: TableState::default().with_selected(0),
             selected_file: None,
         })
@@ -153,11 +151,12 @@ impl App {
             FileKind::OnlyInLocal { contents, .. } => Ok(contents),
             FileKind::ExistsInBoth { local_contents, .. } => Ok(local_contents),
         }?;
+
         self.config
             .aws_client()
             .put_object(
-                self.config.remote_directory(),
-                path,
+                self.config.clone().remote_directory().to_string(),
+                path.to_string(),
                 ByteStream::from(content.clone()),
             )
             .await

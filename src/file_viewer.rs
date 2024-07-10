@@ -18,15 +18,22 @@ pub type Files = BTreeMap<FilePath, FileKind>;
 pub struct FileViewer(pub BTreeMap<FilePath, FileKind>);
 
 impl FileViewer {
-    pub async fn new(config: &Config) -> Result<Self, Error> {
-        let files = FileViewer::load_files(config).await?;
-        Ok(FileViewer(files))
+    pub fn new() -> Self {
+        FileViewer(BTreeMap::new())
     }
 
-    pub async fn load_files(config: &Config) -> Result<Files, Error> {
+    pub async fn load_files(mut self, config: &Config) -> Result<Self, Error> {
         let local_files = FileViewer::load_local(config).await?;
         let remote_files = FileViewer::fetch_remote(config).await?;
-        let files = remote_files
+        self.0 = FileViewer::create_viewer(local_files, remote_files);
+        Ok(self)
+    }
+
+    fn create_viewer(
+        local_files: HashMap<FilePath, FileMetaData>,
+        remote_files: HashMap<FilePath, FileMetaData>,
+    ) -> Files {
+        remote_files
             .into_iter()
             .map(|(path, (hash, content))| (path, (Source::Remote, hash, content)))
             .chain(
@@ -36,10 +43,10 @@ impl FileViewer {
             )
             .fold(
                 BTreeMap::<FilePath, FileKind>::new(),
-                |mut acc, (path, (source, incoming_hash, incoming_content))| {
+                |mut acc, (path, (incoming_source, incoming_hash, incoming_content))| {
                     match acc.get_mut(&path) {
                         Some(existing) => match existing {
-                            FileKind::OnlyInRemote { hash, contents } => match source {
+                            FileKind::OnlyInRemote { hash, contents } => match incoming_source {
                                 Source::Remote => {
                                     *existing = FileKind::create_remote(
                                         incoming_hash,
@@ -55,7 +62,7 @@ impl FileViewer {
                                     )
                                 }
                             },
-                            FileKind::OnlyInLocal { hash, contents } => match source {
+                            FileKind::OnlyInLocal { hash, contents } => match incoming_source {
                                 Source::Remote => {
                                     *existing = FileKind::create_dual_entry(
                                         incoming_hash,
@@ -74,7 +81,7 @@ impl FileViewer {
                                 local_contents,
                                 remote_hash,
                                 remote_contents,
-                            } => match source {
+                            } => match incoming_source {
                                 Source::Remote => {
                                     *existing = FileKind::create_dual_entry(
                                         incoming_hash,
@@ -93,7 +100,7 @@ impl FileViewer {
                                 }
                             },
                         },
-                        None => match source {
+                        None => match incoming_source {
                             Source::Remote => {
                                 acc.insert(
                                     path.to_owned(),
@@ -106,7 +113,7 @@ impl FileViewer {
                             Source::Local => {
                                 acc.insert(
                                     path.to_owned(),
-                                    FileKind::OnlyInRemote {
+                                    FileKind::OnlyInLocal {
                                         hash: incoming_hash,
                                         contents: incoming_content,
                                     },
@@ -116,15 +123,14 @@ impl FileViewer {
                     };
                     acc
                 },
-            );
-        Ok(files)
+            )
     }
 
     async fn fetch_remote(config: &Config) -> Result<HashMap<FilePath, FileMetaData>, Error> {
         let mut remote = HashMap::new();
         let mut paginated_response = config
             .aws_client()
-            .list_objects(config.remote_directory())
+            .list_objects(config.remote_directory().to_string())
             .await;
 
         while let Some(result) = paginated_response.next().await {
@@ -133,8 +139,11 @@ impl FileViewer {
                     if let Ok(remote_object) = config
                         .aws_client()
                         .get_object(
-                            config.remote_directory(),
-                            object.key().expect("uploaded objects must have a key"),
+                            config.remote_directory().to_string(),
+                            object
+                                .key()
+                                .expect("uploaded objects must have a key")
+                                .to_string(),
                         )
                         .await
                     {
@@ -180,7 +189,7 @@ impl FileViewer {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum FileKind {
     OnlyInRemote {
         hash: md5::Digest,
@@ -219,5 +228,60 @@ impl FileKind {
 
     fn create_remote(hash: md5::Digest, contents: Vec<u8>) -> Self {
         FileKind::OnlyInRemote { hash, contents }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_file_viewer() {
+        let remote_files: HashMap<FilePath, FileMetaData> = vec![
+            (
+                String::from("file1"),
+                (
+                    md5::compute(String::from("file1_contents")),
+                    String::from("file1_contents").as_bytes().to_vec(),
+                ),
+            ),
+            (
+                String::from("file2"),
+                (
+                    md5::compute(String::from("file2_contents")),
+                    String::from("file2_contents").as_bytes().to_vec(),
+                ),
+            ),
+        ]
+        .into_iter()
+        .collect();
+        let local_files: HashMap<FilePath, FileMetaData> = vec![
+            (
+                String::from("file2"),
+                (
+                    md5::compute(String::from("file2_contents")),
+                    String::from("file2_contents").as_bytes().to_vec(),
+                ),
+            ),
+            (
+                String::from("file3"),
+                (
+                    md5::compute(String::from("file3_contents")),
+                    String::from("file3_contents").as_bytes().to_vec(),
+                ),
+            ),
+        ]
+        .into_iter()
+        .collect();
+
+        let files = FileViewer::create_viewer(local_files, remote_files);
+        let file_1 = files.get("file1").unwrap();
+        let file_2 = files.get("file2").unwrap();
+        let file_3 = files.get("file3").unwrap();
+
+        assert!(files.len() == 3);
+        assert!(matches!(file_1, FileKind::OnlyInRemote { .. }));
+        assert!(matches!(file_2, FileKind::ExistsInBoth { .. }));
+        assert!(matches!(dbg!(file_3), FileKind::OnlyInLocal { .. }));
     }
 }

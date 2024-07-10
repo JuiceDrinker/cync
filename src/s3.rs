@@ -1,6 +1,7 @@
 use aws_sdk_s3 as s3;
 use aws_smithy_async::future::pagination_stream::PaginationStream;
 use aws_smithy_runtime_api::client::orchestrator::HttpResponse;
+use mockall::{self, automock};
 use s3::{
     error::SdkError,
     operation::{
@@ -14,15 +15,16 @@ pub struct S3Client {
     inner: s3::Client,
 }
 
+#[automock]
 impl S3Client {
     pub fn new(inner: s3::Client) -> Self {
         Self { inner }
     }
 
-    pub async fn put_object(
+    pub async fn put_object<T: Into<String> + 'static>(
         &self,
-        bucket_name: impl Into<String>,
-        object_name: impl Into<String>,
+        bucket_name: T,
+        object_name: T,
         body: s3::primitives::ByteStream,
     ) -> Result<PutObjectOutput, SdkError<PutObjectError>> {
         self.inner
@@ -34,9 +36,9 @@ impl S3Client {
             .await
     }
 
-    pub async fn list_objects(
+    pub async fn list_objects<T: Into<String> + 'static>(
         &self,
-        bucket_name: impl Into<String>,
+        bucket_name: T,
     ) -> PaginationStream<Result<ListObjectsV2Output, SdkError<ListObjectsV2Error, HttpResponse>>>
     {
         self.inner
@@ -47,10 +49,10 @@ impl S3Client {
             .send()
     }
 
-    pub async fn get_object(
+    pub async fn get_object<T: Into<String> + 'static>(
         &self,
-        bucket_name: impl Into<String>,
-        file_path: impl Into<String>,
+        bucket_name: T,
+        file_path: T,
     ) -> Result<GetObjectOutput, SdkError<GetObjectError, HttpResponse>> {
         self.inner
             .get_object()
