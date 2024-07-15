@@ -21,10 +21,14 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
 
 fn render_footer(frame: &mut Frame, app: &mut App, area: Rect) {
     let text = match &app.mode {
-        Mode::Default => String::from("Up/Down: j/k, Select: <Enter>"),
+        Mode::Default => String::from("Up/Down: j/k, Select: <Enter>, Quit: q"),
         Mode::PendingAction(kind) => match kind {
-            FileKind::OnlyInRemote { .. } => String::from("Select an action: Pull (f)rom remote"),
-            FileKind::OnlyInLocal { .. } => String::from("Select an action: Push (t)o remote"),
+            FileKind::OnlyInRemote { .. } => {
+                String::from("Select an action: Pull (f)rom remote, (Q)uit to previous screen")
+            }
+            FileKind::OnlyInLocal { .. } => {
+                String::from("Select an action: Push (t)o remote, (q)uit to previous screen")
+            }
             FileKind::ExistsInBoth {
                 local_hash,
                 remote_hash,

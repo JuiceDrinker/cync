@@ -182,6 +182,9 @@ impl FileViewer {
             info!("Found {} local files", local_files.keys().count());
             Ok(local_files)
         } else {
+            // TODO: Should we just crash? 
+            // User had a valid config file, but local_directory didn't exist/got deleted
+            // Should we re-create the directory with new contents?
             info!("Could not find local directory");
             App::create_default_directory(config).await?;
             Ok(HashMap::new())

@@ -5,6 +5,9 @@ use crate::{
 use requestty::Question;
 use std::{collections::HashMap, fs, sync::Arc};
 
+// TODO: If config file already exists, read config file.
+// If expected directories don't exist -> create the directories
+// If directories do exist -> skip that step
 pub async fn run_setup_wizard() -> Result<(), Error> {
     let questions = vec![
         Question::input("local_directory")
@@ -56,10 +59,8 @@ pub async fn run_setup_wizard() -> Result<(), Error> {
         }
     });
 
-    let home_dir = match home::home_dir() {
-        Some(v) => Ok(v),
-        None => Err(Error::SetupWizard(SetupWizardErrorKind::HomeDirectory)),
-    }?;
+    let home_dir =
+        home::home_dir().ok_or(Error::SetupWizard(SetupWizardErrorKind::HomeDirectory))?;
 
     fs::create_dir(format!(
         "{}/{}",

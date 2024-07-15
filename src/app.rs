@@ -32,13 +32,6 @@ pub struct App {
 }
 
 impl App {
-    pub async fn reload_files(&mut self) -> Result<(), Error> {
-        self.files = FileViewer::new().load_files(&self.config).await?;
-        Ok(())
-    }
-}
-
-impl App {
     pub async fn new(aws_config: &aws_config::SdkConfig) -> Result<Self, Error> {
         let config = Arc::new(Config::load(aws_config)?);
         Ok(Self {
@@ -48,6 +41,11 @@ impl App {
             table_state: TableState::default().with_selected(0),
             selected_file: None,
         })
+    }
+
+    pub async fn reload_files(&mut self) -> Result<(), Error> {
+        self.files = FileViewer::new().load_files(&self.config).await?;
+        Ok(())
     }
 
     pub fn view_files(&self) -> &Files {
@@ -131,7 +129,9 @@ impl App {
     }
 
     pub async fn create_default_directory(config: &Config) -> Result<(), Error> {
+        // TODO: If we choose to keep this what do we do about config file?
         info!("Creating default directory");
+
         if create_dir(config.local_directory()).await.is_ok() {
             Ok(())
         } else {
@@ -165,8 +165,6 @@ impl App {
     }
 
     pub fn pull_file_from_remote(&self, index: usize) -> Result<(), Error> {
-        // TODO: S3 file paths are absolute paths, expect and strip remote_directory_name before
-        // persisiting in local_directory
         let (path, kind) = self
             .view_files()
             .iter()
@@ -175,15 +173,26 @@ impl App {
         let content = match kind {
             FileKind::OnlyInRemote { contents, .. } => Ok(contents),
             FileKind::OnlyInLocal { .. } => Err(Error::LocalSyncFailed),
-            // TODO: Remote contents could be the correct one?
-            FileKind::ExistsInBoth { local_contents, .. } => Ok(local_contents),
+            // User saw that file existed in both with differing contents
+            // Asked to overwrite with remote content
+            FileKind::ExistsInBoth {
+                remote_contents, ..
+            } => Ok(remote_contents),
         }?;
 
-        fs::write(
-            format!("{}/{}", self.config.local_directory().display(), path),
-            content,
-        )
-        .map_err(|_| Error::LocalSyncFailed)?;
-        Ok(())
+        // S3 file paths are absolute paths, expect and strip remote_directory_name before
+        // persisiting in local_directory
+        match path.strip_prefix(&format!("{}/", self.config.remote_directory())) {
+            Some(local_path) => {
+                fs::write(
+                    format!("{}/{}", self.config.local_directory().display(), local_path),
+                    content,
+                )
+                .map_err(|_| Error::LocalSyncFailed)?;
+                Ok(())
+            }
+            // TODO: More explicit errors
+            None => Err(Error::LocalSyncFailed),
+        }
     }
 }

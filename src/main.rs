@@ -12,12 +12,12 @@ use std::io::Stderr;
 use ui::ui;
 use util::{initialize_terminal, restore_terminal};
 
-mod s3;
 mod app;
 mod config;
 mod error;
 mod file_viewer;
 mod logging;
+mod s3;
 mod setup;
 mod ui;
 mod util;
@@ -75,7 +75,7 @@ async fn run_app(
                 },
                 app::Mode::PendingAction(kind) => match kind {
                     FileKind::OnlyInRemote { .. } => match key.code {
-                        KeyCode::Char('t') => {
+                        KeyCode::Char('f') => {
                             app.pull_file_from_remote(app.selected_file.unwrap())?;
                             app.reload_files().await?;
                             app.selected_file = None;
@@ -87,8 +87,8 @@ async fn run_app(
                         _ => {}
                     },
                     FileKind::OnlyInLocal { .. } => match key.code {
-                        KeyCode::Char('f') => {
-                            app.pull_file_from_remote(app.selected_file.unwrap())?;
+                        KeyCode::Char('t') => {
+                            app.push_file_to_remote(app.selected_file.unwrap()).await?;
                             app.reload_files().await?;
                             app.selected_file = None;
                         }
