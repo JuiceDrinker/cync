@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use aws_sdk_s3::{operation::get_object::GetObjectError, primitives::ByteStreamError};
 use thiserror::Error;
 
@@ -45,14 +47,26 @@ pub enum SetupWizardErrorKind {
     #[error("Failed to create remote folder")]
     BucketCreation,
 
-    #[error("Failed to create local folder")]
-    LocalDirectoryCreation,
+    #[error("Failed to create directory at path: `{0}`")]
+    LocalDirectoryCreation(String),
 
-    #[error("Failed to create config file")]
-    ConfigFile,
+    #[error("Error saving config")]
+    ConfigFile(ConfigFileErrorKind),
 
     #[error("Failed to local home directory")]
     HomeDirectory,
+}
+
+#[derive(Error, Debug)]
+pub enum ConfigFileErrorKind {
+    #[error("Failed to create config file directory at path: `{0}` ")]
+    Directory(String),
+
+    #[error("Failed to create config file at path: `{0}`")]
+    FileCreation(String),
+
+    #[error("Failed to write to config file at path: `{0}`")]
+    FileWrite(String),
 }
 
 #[derive(Error, Debug)]

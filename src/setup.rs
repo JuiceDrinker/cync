@@ -1,6 +1,6 @@
 use crate::{
     config::ConfigFile,
-    error::{Error, SetupWizardErrorKind},
+    error::{ConfigFileErrorKind, Error, SetupWizardErrorKind},
 };
 use requestty::Question;
 use std::{collections::HashMap, fs, io::Write, sync::Arc};
@@ -29,7 +29,7 @@ pub async fn run_setup_wizard() -> Result<(), Error> {
             .fold(HashMap::new(), |mut acc, (question, answer)| {
                 let ans = match answer {
                     requestty::Answer::String(v) => v,
-                    _ => panic!("Must pass string"),
+                    _ => unreachable!(),
                 };
                 acc.insert(question, ans);
                 acc
@@ -50,26 +50,26 @@ pub async fn run_setup_wizard() -> Result<(), Error> {
         let aws_config = &aws_config::load_from_env().await;
         let aws_client = aws_sdk_s3::Client::new(aws_config);
 
-        match aws_client
+        aws_client
             .create_bucket()
             .bucket(remote_directory_name)
             .send()
             .await
-        {
-            Ok(_) => Ok(remote_directory_name.clone()),
-            Err(_) => Err(Error::SetupWizard(SetupWizardErrorKind::BucketCreation)),
-        }
+            .map(|_| remote_directory_name.clone())
+            // TODO: Investigate AWS error types to be more explicit as to why operation failed
+            // Two most likely erorrs are BucketAlreadyExists and invalid bucket names
+            .map_err(|_| Error::SetupWizard(SetupWizardErrorKind::BucketCreation))
     });
 
     let home_dir =
         home::home_dir().ok_or(Error::SetupWizard(SetupWizardErrorKind::HomeDirectory))?;
-
-    fs::create_dir(format!(
-        "{}/{}",
-        home_dir.display(),
-        local_directory_name.clone()
-    ))
-    .map_err(|_| Error::SetupWizard(SetupWizardErrorKind::LocalDirectoryCreation))?;
+    let full_local_directory_path =
+        format!("{}/{}", home_dir.display(), local_directory_name.clone());
+    fs::create_dir(full_local_directory_path.clone()).map_err(|_| {
+        Error::SetupWizard(SetupWizardErrorKind::LocalDirectoryCreation(
+            full_local_directory_path.clone(),
+        ))
+    })?;
 
     let remote_directory_name = remote_handle
         .await
@@ -82,16 +82,26 @@ pub async fn run_setup_wizard() -> Result<(), Error> {
 
     let toml = toml::to_string(&config_file).unwrap();
     let xdg_config = xdg::BaseDirectories::new().unwrap().get_config_home();
-    let full_local_path = format!("{}.cync", xdg_config.display());
+    let full_config_path = format!("{}.cync", xdg_config.display());
 
-    fs::create_dir(full_local_path.clone())
-        .map_err(|_| Error::SetupWizard(SetupWizardErrorKind::ConfigFile))?;
+    fs::create_dir(full_config_path.clone()).map_err(|_| {
+        Error::SetupWizard(SetupWizardErrorKind::ConfigFile(
+            ConfigFileErrorKind::Directory(full_config_path.clone()),
+        ))
+    })?;
 
-    let mut file = fs::File::create_new(format!("{}/config.toml", full_local_path))
-        .map_err(|_| Error::SetupWizard(SetupWizardErrorKind::ConfigFile))?;
-
-    file.write_all(toml.as_bytes())
-        .map_err(|_| Error::SetupWizard(SetupWizardErrorKind::ConfigFile))?;
+    fs::File::create_new(format!("{}/config.toml", full_config_path))
+        .map_err(|_| {
+            Error::SetupWizard(SetupWizardErrorKind::ConfigFile(
+                ConfigFileErrorKind::FileCreation(full_config_path.clone()),
+            ))
+        })?
+        .write_all(toml.as_bytes())
+        .map_err(|_| {
+            Error::SetupWizard(SetupWizardErrorKind::ConfigFile(
+                ConfigFileErrorKind::FileWrite(full_config_path.clone()),
+            ))
+        })?;
 
     Ok(())
 }
