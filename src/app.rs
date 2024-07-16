@@ -181,7 +181,7 @@ impl App {
         }?;
 
         // S3 file paths are absolute paths, expect and strip remote_directory_name before
-        // persisiting in local_directory
+        // persisting in local_directory
         match path.strip_prefix(&format!("{}/", self.config.remote_directory())) {
             Some(local_path) => {
                 fs::write(

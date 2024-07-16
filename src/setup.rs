@@ -3,11 +3,13 @@ use crate::{
     error::{Error, SetupWizardErrorKind},
 };
 use requestty::Question;
-use std::{collections::HashMap, fs, sync::Arc};
+use std::{collections::HashMap, fs, io::Write, sync::Arc};
 
 // TODO: If config file already exists, read config file.
-// If expected directories don't exist -> create the directories
-// If directories do exist -> skip that step
+// If expected directories don't exist -> create the directories (currently we create ~/cync and
+// ~/.config/.cync)
+// If directories do exist -> skip that step (currently we would panic)
+
 pub async fn run_setup_wizard() -> Result<(), Error> {
     let questions = vec![
         Question::input("local_directory")
@@ -16,7 +18,7 @@ pub async fn run_setup_wizard() -> Result<(), Error> {
             .build(),
         Question::input("remote_directory")
             .message("Provide the name of the remote directory to create, if left empty will be named cync")
-            .default("cync")
+            .default("cync-test")
             .build(),
     ];
 
@@ -74,17 +76,21 @@ pub async fn run_setup_wizard() -> Result<(), Error> {
         .map_err(|_| Error::SetupWizard(SetupWizardErrorKind::BucketCreation))??;
 
     let config_file = ConfigFile {
-        remote_directory_name: remote_directory_name.to_string(),
-        local_directory_name: local_directory_name.into(),
+        remote_directory_name,
+        local_directory_name: (local_directory_name.into()),
     };
 
     let toml = toml::to_string(&config_file).unwrap();
+    let xdg_config = xdg::BaseDirectories::new().unwrap().get_config_home();
+    let full_local_path = format!("{}.cync", xdg_config.display());
 
-    let xdg_config = xdg::BaseDirectories::with_prefix("cync")
-        .unwrap()
-        .get_config_home();
+    fs::create_dir(full_local_path.clone())
+        .map_err(|_| Error::SetupWizard(SetupWizardErrorKind::ConfigFile))?;
 
-    fs::write(format!("{}/config.toml", xdg_config.display()), toml)
+    let mut file = fs::File::create_new(format!("{}/config.toml", full_local_path))
+        .map_err(|_| Error::SetupWizard(SetupWizardErrorKind::ConfigFile))?;
+
+    file.write_all(toml.as_bytes())
         .map_err(|_| Error::SetupWizard(SetupWizardErrorKind::ConfigFile))?;
 
     Ok(())
