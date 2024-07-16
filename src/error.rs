@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use aws_sdk_s3::{operation::get_object::GetObjectError, primitives::ByteStreamError};
 use thiserror::Error;
 

@@ -30,9 +30,9 @@ impl Config {
 
     fn get_config_file_path() -> Result<Vec<u8>, Error> {
         let config_file_path = fs::read(
-            xdg::BaseDirectories::with_prefix("cync")
+            xdg::BaseDirectories::with_prefix(".cync")
                 .map_err(|_| Error::ConfigFileCorrupted)?
-                .get_config_file("cync"),
+                .get_config_file("config.toml"),
         )
         .map_err(|_| Error::ConfigFileMissing)?;
 

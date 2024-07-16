@@ -75,14 +75,15 @@ pub async fn run_setup_wizard() -> Result<(), Error> {
         .await
         .map_err(|_| Error::SetupWizard(SetupWizardErrorKind::BucketCreation))??;
 
+    let xdg_config = xdg::BaseDirectories::new().unwrap().get_config_home();
+    let full_config_path = format!("{}.cync", xdg_config.display());
+
     let config_file = ConfigFile {
         remote_directory_name,
-        local_directory_name: (local_directory_name.into()),
+        local_directory_name: full_local_directory_path.into(),
     };
 
     let toml = toml::to_string(&config_file).unwrap();
-    let xdg_config = xdg::BaseDirectories::new().unwrap().get_config_home();
-    let full_config_path = format!("{}.cync", xdg_config.display());
 
     fs::create_dir(full_config_path.clone()).map_err(|_| {
         Error::SetupWizard(SetupWizardErrorKind::ConfigFile(

@@ -1,6 +1,6 @@
 use config::Config;
 use std::collections::BTreeMap;
-use std::{collections::HashMap, fs, path::Path};
+use std::{collections::HashMap, fs};
 use tracing::info;
 use util::walk_directory;
 
@@ -178,11 +178,12 @@ impl FileViewer {
             .map_err(|_| Error::LoadingLocalFiles(error::LoadingLocalFiles::FileSystem))?
             .is_dir()
         {
-            let local_files = walk_directory(Path::new(config.local_directory()))?;
+            let top_level_path = config.local_directory();
+            let local_files = walk_directory(config.local_directory(), top_level_path)?;
             info!("Found {} local files", local_files.keys().count());
             Ok(local_files)
         } else {
-            // TODO: Should we just crash? 
+            // TODO: Should we just crash?
             // User had a valid config file, but local_directory didn't exist/got deleted
             // Should we re-create the directory with new contents?
             info!("Could not find local directory");
