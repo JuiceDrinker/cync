@@ -1,10 +1,14 @@
 [package]
 name = "cync"
-version = "0.1.0"
+authors = ["Adi Subramanian"]
+version = "0.1.1"
 edition = "2021"
+license = "MIT"
+homepage = "https://github.com/JuiceDrinker/cync"
+repository = "https://github.com/JuiceDrinker/cync"
+categories = ["command-line-utilities", "filesystem"]
+description = "CLI for private file management"
 
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 aws-sdk-s3 = "1.4.0"

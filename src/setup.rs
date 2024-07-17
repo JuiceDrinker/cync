@@ -18,7 +18,7 @@ pub async fn run_setup_wizard() -> Result<(), Error> {
             .build(),
         Question::input("remote_directory")
             .message("Provide the name of the remote directory to create, if left empty will be named cync")
-            .default("cync-test")
+            .default("cync")
             .build(),
     ];
 

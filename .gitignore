@@ -1,5 +1,4 @@
 /target
-/cync
 .envrc
 *.sh
 .cync_data/*
