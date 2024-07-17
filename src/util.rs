@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    app::{FileMetaData, FilePath},
+    cync::{FileMetaData, FilePath},
     error::{self, Error, LoadingLocalFiles, TuiErrorKind},
 };
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture};

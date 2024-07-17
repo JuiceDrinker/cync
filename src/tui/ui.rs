@@ -1,12 +1,13 @@
-use crate::app::{App, Mode};
-use crate::file_viewer::FileKind;
-use ratatui::prelude::{Alignment, Constraint, Rect};
-use ratatui::style::{Color, Modifier, Style, Stylize};
-use ratatui::text::Text;
-use ratatui::widgets::{Block, Borders, Cell, HighlightSpacing, Row, Table};
-use ratatui::Frame;
+use crate::cync::{file_viewer::FileKind, Cync, Mode};
+use ratatui::{
+    prelude::{Alignment, Constraint, Rect},
+    style::{Color, Modifier, Style, Stylize},
+    text::Text,
+    widgets::{Block, Borders, Cell, HighlightSpacing, Row, Table},
+    Frame,
+};
 
-pub fn ui(frame: &mut Frame, app: &mut App) {
+pub fn ui(frame: &mut Frame, app: &mut Cync) {
     let area = frame.size();
     let block = Block::default()
         .title_top("Cync".bold())
@@ -19,7 +20,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
     render_footer(frame, app, block_inner);
 }
 
-fn render_footer(frame: &mut Frame, app: &mut App, area: Rect) {
+fn render_footer(frame: &mut Frame, app: &mut Cync, area: Rect) {
     let text = match &app.mode {
         Mode::Default => String::from("Up/Down: j/k, Select: <Enter>, Quit: q"),
         Mode::PendingAction(kind) => match kind {
@@ -50,7 +51,7 @@ fn render_footer(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_widget(block, area);
 }
 
-fn render_table(frame: &mut Frame, app: &mut App, area: Rect) {
+fn render_table(frame: &mut Frame, app: &mut Cync, area: Rect) {
     let header_style = Style::default();
     let selected_style = Style::default().add_modifier(Modifier::REVERSED);
     let header = ["Path", "Local Hash", "Remote Hash"]

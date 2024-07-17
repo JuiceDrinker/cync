@@ -1,5 +1,5 @@
 use crate::{
-    config::ConfigFile,
+    cync::config::ConfigFile,
     error::{ConfigFileErrorKind, Error, SetupWizardErrorKind},
 };
 use requestty::Question;

@@ -1,12 +1,15 @@
-use config::Config;
-use std::collections::BTreeMap;
-use std::{collections::HashMap, fs};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fs,
+};
 use tracing::info;
 use util::walk_directory;
 
-use crate::app::{App, FileMetaData, FilePath};
+use crate::cync::{Cync, FileMetaData, FilePath};
 use crate::error::{self, Error};
-use crate::{config, util};
+use crate::util;
+
+use super::config::Config;
 
 enum Source {
     Remote,
@@ -187,7 +190,7 @@ impl FileViewer {
             // User had a valid config file, but local_directory didn't exist/got deleted
             // Should we re-create the directory with new contents?
             info!("Could not find local directory");
-            App::create_default_directory(config).await?;
+            Cync::create_default_directory(config).await?;
             Ok(HashMap::new())
         }
     }

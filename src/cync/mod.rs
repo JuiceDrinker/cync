@@ -5,15 +5,18 @@ use std::cmp;
 use std::fs;
 use std::sync::Arc;
 use tokio::fs::create_dir;
-use tracing::event;
 use tracing::info;
 use unicode_width::UnicodeWidthStr;
 
-use crate::config;
 use crate::error::Error;
-use crate::file_viewer::FileKind;
-use crate::file_viewer::{FileViewer, Files};
 use crate::trace_dbg;
+
+use self::file_viewer::FileKind;
+use self::file_viewer::FileViewer;
+use self::file_viewer::Files;
+
+pub mod config;
+pub mod file_viewer;
 
 pub type FilePath = String;
 pub type FileHash = md5::Digest;
@@ -25,7 +28,7 @@ pub enum Mode {
     PendingAction(FileKind),
 }
 
-pub struct App {
+pub struct Cync {
     pub mode: Mode,
     pub config: Arc<Config>,
     pub files: FileViewer,
@@ -33,7 +36,7 @@ pub struct App {
     pub selected_file: Option<usize>,
 }
 
-impl App {
+impl Cync {
     pub async fn new(aws_config: &aws_config::SdkConfig) -> Result<Self, Error> {
         let config = Arc::new(Config::load(aws_config)?);
         Ok(Self {
