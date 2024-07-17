@@ -40,7 +40,7 @@ async fn main() -> Result<(), Error> {
         let mut terminal = initialize_terminal()?;
         let mut app = App::new(aws_config).await?;
         let app_res = run_app(&mut terminal, &mut app).await;
-        // TODO: Restoration seems to be broken?
+        // TODO: Restoration seems to be broken if app panics?
         restore_terminal(terminal)?;
         app_res
     };

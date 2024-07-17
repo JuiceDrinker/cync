@@ -5,6 +5,7 @@ use std::cmp;
 use std::fs;
 use std::sync::Arc;
 use tokio::fs::create_dir;
+use tracing::event;
 use tracing::info;
 use unicode_width::UnicodeWidthStr;
 
@@ -12,6 +13,7 @@ use crate::config;
 use crate::error::Error;
 use crate::file_viewer::FileKind;
 use crate::file_viewer::{FileViewer, Files};
+use crate::trace_dbg;
 
 pub type FilePath = String;
 pub type FileHash = md5::Digest;
@@ -170,29 +172,19 @@ impl App {
             .iter()
             .nth(index)
             .expect("to pass a valid index");
-        let content = match kind {
+
+        let content = match trace_dbg!(kind) {
             FileKind::OnlyInRemote { contents, .. } => Ok(contents),
-            FileKind::OnlyInLocal { .. } => Err(Error::LocalSyncFailed),
-            // User saw that file existed in both with differing contents
-            // Asked to overwrite with remote content
             FileKind::ExistsInBoth {
                 remote_contents, ..
             } => Ok(remote_contents),
+            FileKind::OnlyInLocal { .. } => Err(Error::LocalSyncFailed),
         }?;
-
-        // S3 file paths are absolute paths, expect and strip remote_directory_name before
-        // persisting in local_directory
-        match path.strip_prefix(&format!("{}/", self.config.remote_directory())) {
-            Some(local_path) => {
-                fs::write(
-                    format!("{}/{}", self.config.local_directory().display(), local_path),
-                    content,
-                )
-                .map_err(|_| Error::LocalSyncFailed)?;
-                Ok(())
-            }
-            // TODO: More explicit errors
-            None => Err(Error::LocalSyncFailed),
-        }
+        fs::write(
+            format!("{}/{}", self.config.local_directory().display(), path),
+            content,
+        )
+        .map_err(|_| Error::LocalSyncFailed)?;
+        Ok(())
     }
 }
