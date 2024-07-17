@@ -33,13 +33,14 @@ pub async fn run_tui(
                     KeyCode::Enter => app.select_file(app.table_state.selected().unwrap()),
                     _ => {}
                 },
-                // TODO: Reset mode after successful action
+                // TODO: Add some sort of loader while awaiting
                 Mode::PendingAction(kind) => match kind {
                     FileKind::OnlyInRemote { .. } => match key.code {
                         KeyCode::Char('f') => {
                             app.pull_file_from_remote(app.selected_file.unwrap())?;
                             app.reload_files().await?;
                             app.selected_file = None;
+                            app.mode = Mode::Default;
                         }
                         KeyCode::Char('q') => {
                             app.selected_file = None;
@@ -51,6 +52,7 @@ pub async fn run_tui(
                         KeyCode::Char('t') => {
                             app.push_file_to_remote(app.selected_file.unwrap()).await?;
                             app.reload_files().await?;
+                            app.mode = Mode::Default;
                             app.selected_file = None;
                         }
                         KeyCode::Char('q') => {
