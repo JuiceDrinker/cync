@@ -1,7 +1,6 @@
 use aws_sdk_s3 as s3;
 use aws_smithy_async::future::pagination_stream::PaginationStream;
 use aws_smithy_runtime_api::client::orchestrator::HttpResponse;
-use mockall::{self, automock};
 use s3::{
     error::SdkError,
     operation::{
@@ -15,7 +14,6 @@ pub struct S3Client {
     inner: s3::Client,
 }
 
-#[automock]
 impl S3Client {
     pub fn new(inner: s3::Client) -> Self {
         Self { inner }

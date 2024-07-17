@@ -3,6 +3,7 @@ name = "cync"
 version = "0.1.0"
 edition = "2021"
 
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -12,13 +13,10 @@ md5 = "0.7.0"
 thiserror = "1.0.61"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
-futures = "0.3.30"
-bytes = "1.6.0"
 crossterm = "0.27.0"
 ratatui = "0.26.3"
 unicode-width = "0.1.12"
 lazy_static = "1.4.0"
-directories = "5.0.1"
 tracing-error = "0.2.0"
 xdg = "2.5.2"
 toml = "0.8.14"
@@ -29,4 +27,3 @@ requestty = "0.5.0"
 home = "0.5.9"
 aws-smithy-runtime-api = { version = "1.7.1", features = ["client"] }
 aws-smithy-async = "1.2.1"
-mockall = "0.12.1"
