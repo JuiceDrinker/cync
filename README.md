@@ -1,4 +1,4 @@
-# Cync (WIP)
+# Cync 
 
 A terminal-based user interface for hosting files on S3 with seamless file synchronization capabilities.
 
@@ -11,6 +11,4 @@ Clone the repository, and run `cargo build`. Thereafter, `cargo run --help` for 
 Assumes, that you have [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-welcome.html) setup.
 
 ## Project Roadmap
-
-- Testing
 - Packaging and release
