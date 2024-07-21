@@ -15,3 +15,10 @@ Supports bi-directional sync without versioning.
 ## Usage
 - Run `cync init` to run the setup wizard the first time
 - Run `cync` to run CLI thereafter
+
+## Roadmap
+- Terminal restoration on panics
+- Improve Setup wizard 
+- Improve error reporting
+- Add loader for long-running tasks
+
