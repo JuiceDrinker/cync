@@ -3,9 +3,11 @@ use ratatui::{
     prelude::{Alignment, Constraint, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::Text,
-    widgets::{Block, Borders, Cell, HighlightSpacing, Row, Table},
+    widgets::{Block, Borders, Cell, HighlightSpacing, Paragraph, Row, Table},
     Frame,
 };
+
+const  NO_FILE_FOUND_TEXT: &str = "No files found in either local or remote directory. Please add files to either directory and restart Cync. Press any key to exit";
 
 pub fn ui(frame: &mut Frame, app: &mut Cync) {
     let area = frame.size();
@@ -16,8 +18,13 @@ pub fn ui(frame: &mut Frame, app: &mut Cync) {
     let block_inner = block.inner(area);
     frame.render_widget(block, area);
 
-    render_table(frame, app, block_inner);
-    render_footer(frame, app, block_inner);
+    // Paragraph::new()
+    if app.mode == Mode::NoFilesFound {
+        frame.render_widget(Paragraph::new(NO_FILE_FOUND_TEXT).centered(), block_inner);
+    } else {
+        render_table(frame, app, block_inner);
+        render_footer(frame, app, block_inner);
+    }
 }
 
 fn render_footer(frame: &mut Frame, app: &mut Cync, area: Rect) {
@@ -42,6 +49,7 @@ fn render_footer(frame: &mut Frame, app: &mut Cync, area: Rect) {
                 }
             }
         },
+        Mode::NoFilesFound => unreachable!(),
     };
 
     let block = Block::new()

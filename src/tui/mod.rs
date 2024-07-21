@@ -26,6 +26,7 @@ pub async fn run_tui(
             event::read().map_err(|_| Error::Tui(TuiErrorKind::KeyboardEvent))?
         {
             match &app.mode {
+                Mode::NoFilesFound => return Ok(()),
                 Mode::Default => match key.code {
                     KeyCode::Char('q') => return Ok(()),
                     KeyCode::Char('j') => app.next_file(),

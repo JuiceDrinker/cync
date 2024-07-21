@@ -23,9 +23,11 @@ pub type FileHash = md5::Digest;
 pub type FileContents = Vec<u8>;
 pub type FileMetaData = (FileHash, FileContents);
 
+#[derive(PartialEq)]
 pub enum Mode {
     Default,
     PendingAction(FileKind),
+    NoFilesFound,
 }
 
 pub struct Cync {
@@ -39,10 +41,15 @@ pub struct Cync {
 impl Cync {
     pub async fn new(aws_config: &aws_config::SdkConfig) -> Result<Self, Error> {
         let config = Arc::new(Config::load(aws_config)?);
+        let files = FileViewer::new().load_files(&config).await?;
         Ok(Self {
-            mode: Mode::Default,
+            mode: if files.0.is_empty() {
+                Mode::NoFilesFound
+            } else {
+                Mode::Default
+            },
             config: Arc::clone(&config),
-            files: FileViewer::new().load_files(&config).await?,
+            files,
             table_state: TableState::default().with_selected(0),
             selected_file: None,
         })

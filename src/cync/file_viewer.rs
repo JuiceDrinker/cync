@@ -196,7 +196,7 @@ impl FileViewer {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum FileKind {
     OnlyInRemote {
         hash: md5::Digest,
