@@ -4,6 +4,7 @@ A terminal-based user interface for hosting files on S3 with seamless file synch
 
 Supports bi-directional sync without versioning.
 
+![Example screenshot](docs/img.png)
 ## Installation
 
 `cync` is available on [crates.io](https://crates.io/crates/cync) and on homebrew.
@@ -32,7 +33,7 @@ brew install cync
 - Run `cync` to run TUI
 
 ## Roadmap
-
+- Be able to pull nested folders from remote directory
 - Add extra CLI commands to print local and remote directory paths
 - Terminal restoration on panics
 - Improve Setup wizard
