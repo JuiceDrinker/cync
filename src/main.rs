@@ -22,6 +22,9 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     initialize_logging()?;
+    // NOTE: According to AWS docs(https://docs.aws.amazon.com/sdkref/latest/guide/environment-variables.html)
+    // enviornemnt variables take precedence over config file
+    // i.e. We can set these to override what is inside the config file
     let aws_config = &aws_config::load_from_env().await;
 
     let Args { init } = Args::parse();
